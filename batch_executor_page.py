@@ -12,6 +12,6 @@ class MyCursor:
 # Each page, represented by this class, processes in series.
 # Choose a page size that can run in under five minutes.
 @dataclass
-class BatchExecutorPage:
+class BatchOrchestratorPage:
     cursor: MyCursor
     pageSize: int

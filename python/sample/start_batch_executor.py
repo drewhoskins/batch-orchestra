@@ -2,8 +2,11 @@ import asyncio
 from dataclasses import dataclass
 from typing import Generic
 from temporalio.client import Client
+import sys, os
+print(os.path.join(os.path.dirname(sys.path[0]), '../'))
+sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '../'))
 
-from batch_executor import BatchExecutor, BatchExecutorInput
+from python.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
 
 async def main():
@@ -11,7 +14,7 @@ async def main():
     client = await Client.connect("localhost:7233")
 
     # Execute the batch executor workflow
-    result = await client.execute_workflow(BatchExecutor.run, BatchExecutorInput("my name"), id="my-workflow-id", task_queue="my-task-queue")
+    result = await client.execute_workflow(BatchOrchestrator.run, BatchOrchestratorInput("my name"), id="my-workflow-id", task_queue="my-task-queue")
 
     print(f"Result: {result}")
 

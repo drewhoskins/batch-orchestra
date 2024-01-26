@@ -1,16 +1,16 @@
 import asyncio
-import concurrent.futures
+import sys, os
+print(os.path.join(os.path.dirname(sys.path[0]), '../'))
+sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '../'))
+
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-# Import the activity and workflow from our other files
-from batch_executor import BatchExecutor, my_process_batch
-
-import asyncio
 import logging
 
-from temporalio.client import Client
-from temporalio.worker import Worker
+from python.batch_orchestrator import BatchOrchestrator, process_batch
+# Import our registry of page processors
+import process_fakedb_page
 
 interrupt_event = asyncio.Event()
 
@@ -23,8 +23,8 @@ async def main():
     async with Worker(
         client,
         task_queue="my-task-queue",
-        activities=[my_process_batch],
-        workflows=[BatchExecutor],
+        activities=[process_batch],
+        workflows=[BatchOrchestrator],
     ):
         # Wait until interrupted
         logging.info("Worker started, ctrl+c to exit")
