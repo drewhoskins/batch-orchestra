@@ -5,10 +5,10 @@ import importlib
 from temporalio import workflow, activity
 from temporalio.client import Client
 from typing import Dict, Generic, List, Optional, TypeVar
-import python.batch_page_processor_context 
+import batch_page_processor_context 
 
-from python.batch_orchestrator_page import BatchOrchestratorPage, MyCursor
-from python.batch_page_processor_registry import list_page_processors, registry as batch_page_processor_registry
+from batch_orchestrator_page import BatchOrchestratorPage, MyCursor
+from batch_page_processor_registry import list_page_processors, registry as batch_page_processor_registry
 
 
 @dataclass 
@@ -76,21 +76,21 @@ class BatchOrchestrator:
             elif self.isNewPageReady(inFlightPages, pendingPages, maxPages, numLaunchedPages, maxParallelism):
                 numLaunchedPages += 1
                 nextPage = pendingPages.pop()
-                await workflow.execute_activity(process_batch, args=['process_fakedb_page', nextPage], start_to_close_timeout=timedelta(minutes=5))
+                await workflow.execute_activity(process_page, args=['process_fakedb_page', nextPage], start_to_close_timeout=timedelta(minutes=5))
         workflow.logger.info(f"Batch executor completed {numLaunchedPages} pages")
         return None
 
 
 # convert batchPageProcessorName to a function and call it with the page
 @activity.defn
-async def process_batch(batchPageProcessorName: str, page: BatchOrchestratorPage):
-    context = await python.batch_page_processor_context.BatchPageProcessorContext(page=page, workflowInfo=activity.info()).async_init()
+async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage):
+    context = await batch_page_processor_context.BatchPageProcessorContext(page=page, workflowInfo=activity.info()).async_init()
     userProvidedActivity = batch_page_processor_registry.get(batchPageProcessorName)
     if not userProvidedActivity:
         raise Exception(
             f"You passed batch processor name {batchPageProcessorName} into the BatchOrchestrator, but it was not registered on " +
             f"your activity worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
             "Available functions: {list_page_processors()}")
-    await userProvidedActivity(context)
-    pass
+    return await userProvidedActivity(context)
+    
 

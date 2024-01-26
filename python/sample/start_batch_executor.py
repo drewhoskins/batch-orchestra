@@ -6,7 +6,7 @@ import sys, os
 print(os.path.join(os.path.dirname(sys.path[0]), '../'))
 sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '../'))
 
-from python.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
+from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
 
 async def main():

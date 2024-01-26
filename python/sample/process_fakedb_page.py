@@ -1,7 +1,7 @@
 from asyncio import sleep
-from python.batch_orchestrator_page import BatchOrchestratorPage, MyCursor
-from python.batch_page_processor_context import BatchPageProcessorContext
-from python.batch_page_processor_registry import page_processor
+from batch_orchestrator_page import BatchOrchestratorPage, MyCursor
+from batch_page_processor_context import BatchPageProcessorContext
+from batch_page_processor_registry import page_processor
 
 
 @page_processor

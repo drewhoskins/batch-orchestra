@@ -8,7 +8,7 @@ from temporalio.worker import Worker
 
 import logging
 
-from python.batch_orchestrator import BatchOrchestrator, process_batch
+from batch_orchestrator import BatchOrchestrator, process_page
 # Import our registry of page processors
 import process_fakedb_page
 
@@ -23,7 +23,7 @@ async def main():
     async with Worker(
         client,
         task_queue="my-task-queue",
-        activities=[process_batch],
+        activities=[process_page],
         workflows=[BatchOrchestrator],
     ):
         # Wait until interrupted

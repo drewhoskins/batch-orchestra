@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 from temporalio.client import Client
 
-import python.batch_orchestrator
+import batch_orchestrator
 
 class BatchPageProcessorContext:
     def __init__(self, *, page, workflowInfo):
@@ -25,7 +25,7 @@ class BatchPageProcessorContext:
             ("BatchPageProcessorContext.async_init() was not called.  This class should only be " +
             "instantiated by the temporal-batch library.")
         await self.parentWorkflow.signal(
-            python.batch_orchestrator.BatchOrchestrator.signalAddPage, 
+            batch_orchestrator.BatchOrchestrator.signalAddPage, 
             page
         )
     
