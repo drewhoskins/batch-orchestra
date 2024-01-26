@@ -1,0 +1,4 @@
+python/__pycache__/**/*
+python/sample/__pycache__/**/*
+.vscode/**/*
+
