@@ -1,21 +1,26 @@
 from asyncio import Future
 from dataclasses import dataclass
 from datetime import timedelta
-import importlib
-from temporalio import workflow, activity
-from temporalio.client import Client
 from typing import Dict, Generic, List, Optional, TypeVar
-import batch_page_processor_context 
 
+from temporalio import workflow, activity
+
+import batch_page_processor_context 
 from batch_orchestrator_page import BatchOrchestratorPage, MyCursor
 from batch_page_processor_registry import list_page_processors, registry as batch_page_processor_registry
 
 
-@dataclass 
+@dataclass(kw_only=True)
 class BatchOrchestratorInput:
     batch_name: str
     # The function, annotated with @page_processor, that will be called on your worker for each page
     page_processor: str
+    # Use this to manage load on your downstream dependencies such as DBs or APIs by limiting the number of pages
+    # processed simultaneously.
+    max_parallelism: int
+    # The cursor, for example a database cursor, from which to start paginating.
+    # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
+    # you are dividing up a large dataset into multiple batches.
     cursor: Optional[MyCursor] = None
 
 # Paginates through a large dataset and executes it with controllable parallelism.  
@@ -25,14 +30,20 @@ class BatchOrchestrator:
     @dataclass
     class Results:
         num_pages_processed: int
+        # You can monitor this to ensure you are getting as much parallel processing as you hoped for.
+        max_parallelism_achieved: int
 
     def __init__(self):
-        self.signal_added_pages = []
-        self.num_pages_processed = 0
+        self.signal_added_pages: List[BatchOrchestratorPage] = []
+        self.num_pages_processed: int = 0
         self.processing_pages: Dict[int, Future[MyCursor]] = {}
         self.pending_pages: List[BatchOrchestratorPage] = []
         self.max_pages: int = 1000 # TODO measure a good limit
-        self.max_parallelism: int = 3
+        self.max_parallelism: int = 0 # initialized later
+
+    def run_init(self, input: BatchOrchestratorInput):
+        self.max_parallelism = input.max_parallelism
+    
 
     #
     # Getting signals when new pages are queued for processing
@@ -89,10 +100,12 @@ class BatchOrchestrator:
     async def run(self, input: BatchOrchestratorInput) -> Results:
         workflow.logger.info("Starting batch executor")
 
+        self.run_init(input)
         start_cursor: MyCursor = input.cursor or MyCursor(0)
         
         page_size = 10
         num_launched_pages = 0
+        max_parallelism_achieved = 0
         self.enqueue_page(BatchOrchestratorPage(start_cursor, page_size))
 
         while not self.work_is_complete():
@@ -108,9 +121,11 @@ class BatchOrchestrator:
                 nextPage = self.pending_pages.pop()
                 self.process_page(input=input, pageNum = num_launched_pages, page = nextPage)
                 num_launched_pages += 1
+            max_parallelism_achieved = max(max_parallelism_achieved, len(self.processing_pages))
+
 
         workflow.logger.info(f"Batch executor completed {self.num_pages_processed} pages")
-        result = BatchOrchestrator.Results(num_pages_processed=self.num_pages_processed)
+        result = BatchOrchestrator.Results(num_pages_processed=self.num_pages_processed, max_parallelism_achieved=max_parallelism_achieved)
         return result
 
 
