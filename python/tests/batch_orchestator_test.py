@@ -10,7 +10,7 @@ from batch_page_processor_registry import page_processor
 
 @page_processor
 async def returns_cursor(context: BatchPageProcessorContext):
-    return context.getPage().cursor.i
+    return context.get_page().cursor.i
 
 def batch_worker(client: Client, task_queue_name: str):
     return Worker(
@@ -30,18 +30,18 @@ async def test_one_page(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.numPagesProcessed == 1
+        assert result.num_pages_processed == 1
 
 @page_processor
 async def spawns_second_page(context: BatchPageProcessorContext):
-    page = context.getPage()
+    page = context.get_page()
     if page.cursor.i == 0:
         await context.enqueue_next_page(
             BatchOrchestratorPage(MyCursor(page.cursor.i + page.page_size), page.page_size)
         )
         print(f"Signaled the workflow {page}")
     print(f"Processing page {page}")
-    return context.getPage().cursor.i
+    return context.get_page().cursor.i
 
 # Testing with spawns_second_page will ensure that the workflow is signaled and that it processes the second page
 @pytest.mark.asyncio
@@ -53,4 +53,4 @@ async def test_two_pages(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.numPagesProcessed == 2
+        assert result.num_pages_processed == 2

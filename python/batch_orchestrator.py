@@ -15,7 +15,7 @@ from batch_page_processor_registry import list_page_processors, registry as batc
 class BatchOrchestratorInput:
     batch_name: str
     # The function, annotated with @page_processor, that will be called on your worker for each page
-    page_processor: str 
+    page_processor: str
     cursor: Optional[MyCursor] = None
 
 # Paginates through a large dataset and executes it with controllable parallelism.  
@@ -24,15 +24,15 @@ class BatchOrchestrator:
 
     @dataclass
     class Results:
-        numPagesProcessed: int
+        num_pages_processed: int
 
     def __init__(self):
-        self.signalAddedPages = []
-        self.numPagesProcessed = 0
-        self.processingPages: Dict[int, Future[MyCursor]] = {}
-        self.pendingPages: List[BatchOrchestratorPage] = []
+        self.signal_added_pages = []
+        self.num_pages_processed = 0
+        self.processing_pages: Dict[int, Future[MyCursor]] = {}
+        self.pending_pages: List[BatchOrchestratorPage] = []
         self.max_pages: int = 1000 # TODO measure a good limit
-        self.maxParallelism: int = 3
+        self.max_parallelism: int = 3
 
     #
     # Getting signals when new pages are queued for processing
@@ -40,27 +40,27 @@ class BatchOrchestrator:
         
     def enqueue_page(self, BatchOrchestratorPage: BatchOrchestratorPage):
         workflow.logger.info(f"Enqueuing page request for cursor {BatchOrchestratorPage.cursor}")
-        self.pendingPages.append(BatchOrchestratorPage)
+        self.pending_pages.append(BatchOrchestratorPage)
 
     def was_signaled_with_page(self)-> bool:
-        return bool(self.signalAddedPages)
+        return bool(self.signal_added_pages)
     
     def pop_signaled_page(self):
-        return self.signalAddedPages.pop()
+        return self.signal_added_pages.pop()
         
     @workflow.signal
     async def signal_add_page(self, page: BatchOrchestratorPage) -> None:
-        self.signalAddedPages.append(page)
+        self.signal_added_pages.append(page)
 
     #
     # Page management
     #   
          
     def work_is_complete(self) -> bool:
-        return not self.pendingPages and not self.processingPages and not self.was_signaled_with_page()
+        return not self.pending_pages and not self.processing_pages and not self.was_signaled_with_page()
     
     def is_new_page_ready(self, num_launched_pages: int) -> bool:
-        return len(self.processingPages) < self.maxParallelism and len(self.pendingPages) > 0 and num_launched_pages < self.max_pages
+        return len(self.processing_pages) < self.max_parallelism and len(self.pending_pages) > 0 and num_launched_pages < self.max_pages
 
     def on_page_processed(self, future: Future[MyCursor], pageNum: int, page: BatchOrchestratorPage):
         exception = future.exception()
@@ -69,16 +69,16 @@ class BatchOrchestrator:
             raise exception
         workflow.logger.info(f"Batch executor completed {page} page at index {pageNum}")
         
-        self.processingPages.pop(pageNum)
-        self.numPagesProcessed += 1
+        self.processing_pages.pop(pageNum)
+        self.num_pages_processed += 1
 
     # Initiate processing the page and register a callback to record that it finished
     def process_page(self, *, input: BatchOrchestratorInput, pageNum: int, page: BatchOrchestratorPage):
-        self.processingPages[pageNum] = workflow.start_activity(
+        self.processing_pages[pageNum] = workflow.start_activity(
             process_page, 
             args=[input.page_processor, page], 
             start_to_close_timeout=timedelta(minutes=5))
-        self.processingPages[pageNum].add_done_callback(
+        self.processing_pages[pageNum].add_done_callback(
             lambda future: self.on_page_processed(future, pageNum, page))
 
     #
@@ -105,19 +105,19 @@ class BatchOrchestrator:
             if self.was_signaled_with_page():
                 self.enqueue_page(self.pop_signaled_page())
             elif self.is_new_page_ready(num_launched_pages):
-                nextPage = self.pendingPages.pop()
+                nextPage = self.pending_pages.pop()
                 self.process_page(input=input, pageNum = num_launched_pages, page = nextPage)
                 num_launched_pages += 1
 
-        workflow.logger.info(f"Batch executor completed {self.numPagesProcessed} pages")
-        result = BatchOrchestrator.Results(numPagesProcessed=self.numPagesProcessed)
+        workflow.logger.info(f"Batch executor completed {self.num_pages_processed} pages")
+        result = BatchOrchestrator.Results(num_pages_processed=self.num_pages_processed)
         return result
 
 
 # convert batchPageProcessorName to a function and call it with the page
 @activity.defn
 async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage):
-    context = await batch_page_processor_context.BatchPageProcessorContext(page=page, workflowInfo=activity.info()).async_init()
+    context = await batch_page_processor_context.BatchPageProcessorContext(page=page, workflow_info=activity.info()).async_init()
     userProvidedActivity = batch_page_processor_registry.get(batchPageProcessorName)
     if not userProvidedActivity:
         raise Exception(

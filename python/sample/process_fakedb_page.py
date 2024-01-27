@@ -6,7 +6,7 @@ from batch_page_processor_registry import page_processor
 
 @page_processor
 async def process_fakedb_page(context: BatchPageProcessorContext):
-    page = context.getPage()
+    page = context.get_page()
     if page.cursor.i == 0:
         await context.enqueue_next_page(
             BatchOrchestratorPage(MyCursor(page.cursor.i + page.pageSize), page.pageSize)

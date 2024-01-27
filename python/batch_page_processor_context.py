@@ -5,9 +5,9 @@ from temporalio.client import Client
 import batch_orchestrator
 
 class BatchPageProcessorContext:
-    def __init__(self, *, page, workflowInfo):
+    def __init__(self, *, page, workflow_info):
         self.page = page
-        self.workflow_info = workflowInfo
+        self.workflow_info = workflow_info
         self.workflow_client: Optional[Client] = None
 
     async def async_init(self)-> BatchPageProcessorContext:
@@ -17,7 +17,7 @@ class BatchPageProcessorContext:
 
         return self
 
-    def getPage(self):
+    def get_page(self):
         return self.page
     
     async def enqueue_next_page(self, page):
