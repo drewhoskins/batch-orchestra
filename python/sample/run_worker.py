@@ -1,7 +1,8 @@
+# Having set up a temporal server at localhost:7233,
+# you can start this sample worker with this script:
+#    poetry run python sample/run_worker.py
 import asyncio
 import sys, os
-print(os.path.join(os.path.dirname(sys.path[0]), '../'))
-sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '../'))
 
 from temporalio.client import Client
 from temporalio.worker import Worker

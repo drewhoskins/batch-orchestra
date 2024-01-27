@@ -15,6 +15,9 @@ temporalio = "^1.5.0"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"

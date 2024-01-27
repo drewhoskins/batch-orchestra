@@ -8,7 +8,6 @@ from batch_page_processor_registry import page_processor
 
 @page_processor
 async def returns_cursor(context: BatchPageProcessorContext):
-    print(f"MOOOOO!!!! {context.getPage()}")
     return context.getPage().cursor.i
 
 

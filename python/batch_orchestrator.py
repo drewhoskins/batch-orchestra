@@ -14,11 +14,17 @@ from batch_page_processor_registry import list_page_processors, registry as batc
 @dataclass 
 class BatchOrchestratorInput:
     batch_name: str
+    # The function, annotated with @page_processor, that will be called on your worker for each page
+    page_processor: str 
     cursor: Optional[MyCursor] = None
 
 # Paginates through a large dataset and executes it with controllable parallelism.  
 @workflow.defn
 class BatchOrchestrator:
+
+    @dataclass
+    class Results:
+        numPagesProcessed: int
 
     def __init__(self):
         self.signalAddedPages = []
@@ -52,7 +58,7 @@ class BatchOrchestrator:
         return len(inFlightPages) < maxParallelism and len(pendingPages) > 0 and numLaunchedPages < maxPages
     
     @workflow.run
-    async def run(self, input: BatchOrchestratorInput):
+    async def run(self, input: BatchOrchestratorInput) -> Results:
         workflow.logger.info("Starting batch executor")
 
         startCursor: MyCursor = input.cursor or MyCursor(0)
@@ -63,6 +69,7 @@ class BatchOrchestrator:
         numLaunchedPages = 0
         inFlightPages : Dict[int, Future[MyCursor]] = {}
         pendingPages = []
+        numFinishedPages = 0
         self.enqueuePage(pendingPages, BatchOrchestratorPage(startCursor, pageSize))
         while not self.workIsComplete(inFlightPages, pendingPages, maxPages, numLaunchedPages):
             # Wake up (or continue) when an activity signals us with more work, when it completes, or when 
@@ -76,9 +83,11 @@ class BatchOrchestrator:
             elif self.isNewPageReady(inFlightPages, pendingPages, maxPages, numLaunchedPages, maxParallelism):
                 numLaunchedPages += 1
                 nextPage = pendingPages.pop()
-                await workflow.execute_activity(process_page, args=['process_fakedb_page', nextPage], start_to_close_timeout=timedelta(minutes=5))
+                await workflow.execute_activity(process_page, args=[input.page_processor, nextPage], start_to_close_timeout=timedelta(minutes=5))
         workflow.logger.info(f"Batch executor completed {numLaunchedPages} pages")
-        return None
+        # TODO - keep track of how many pages were processed and return that
+        result = BatchOrchestrator.Results(numPagesProcessed=numLaunchedPages)
+        return result
 
 
 # convert batchPageProcessorName to a function and call it with the page
