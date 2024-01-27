@@ -117,7 +117,7 @@ class BatchOrchestrator:
 # convert batchPageProcessorName to a function and call it with the page
 @activity.defn
 async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage):
-    context = await batch_page_processor_context.BatchPageProcessorContext(page=page, workflow_info=activity.info()).async_init()
+    context = await batch_page_processor_context.BatchPageProcessorContext(page=page, activity_info=activity.info()).async_init()
     userProvidedActivity = batch_page_processor_registry.get(batchPageProcessorName)
     if not userProvidedActivity:
         raise Exception(

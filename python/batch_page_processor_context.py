@@ -1,19 +1,21 @@
 from __future__ import annotations
 from typing import Optional
+import temporalio.activity
 from temporalio.client import Client
+from batch_orchestrator_page import BatchOrchestratorPage
 
 import batch_orchestrator
 
 class BatchPageProcessorContext:
-    def __init__(self, *, page, workflow_info):
+    def __init__(self, *, page: BatchOrchestratorPage, activity_info: temporalio.activity.Info):
         self.page = page
-        self.workflow_info = workflow_info
+        self.activity_info = activity_info
         self.workflow_client: Optional[Client] = None
 
     async def async_init(self)-> BatchPageProcessorContext:
         self.workflow_client = await Client.connect("localhost:7233")
         self.parent_workflow = self.workflow_client.get_workflow_handle(
-            self.workflow_info.workflow_id, run_id = self.workflow_info.workflow_run_id)
+            self.activity_info.workflow_id, run_id = self.activity_info.workflow_run_id)
 
         return self
 
