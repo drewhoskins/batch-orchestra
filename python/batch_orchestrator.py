@@ -34,7 +34,6 @@ class BatchOrchestrator:
         max_parallelism_achieved: int
 
     def __init__(self):
-        self.signal_added_pages: List[BatchOrchestratorPage] = []
         self.num_pages_processed: int = 0
         self.processing_pages: Dict[int, Future[MyCursor]] = {}
         self.pending_pages: List[BatchOrchestratorPage] = []
@@ -52,23 +51,17 @@ class BatchOrchestrator:
     def enqueue_page(self, BatchOrchestratorPage: BatchOrchestratorPage):
         workflow.logger.info(f"Enqueuing page request for cursor {BatchOrchestratorPage.cursor}")
         self.pending_pages.append(BatchOrchestratorPage)
-
-    def was_signaled_with_page(self)-> bool:
-        return bool(self.signal_added_pages)
-    
-    def pop_signaled_page(self):
-        return self.signal_added_pages.pop()
-        
+     
     @workflow.signal
     async def signal_add_page(self, page: BatchOrchestratorPage) -> None:
-        self.signal_added_pages.append(page)
+        self.enqueue_page(page)
 
     #
     # Page management
     #   
          
     def work_is_complete(self) -> bool:
-        return not self.pending_pages and not self.processing_pages and not self.was_signaled_with_page()
+        return not self.pending_pages and not self.processing_pages
     
     def is_new_page_ready(self, num_launched_pages: int) -> bool:
         return len(self.processing_pages) < self.max_parallelism and len(self.pending_pages) > 0 and num_launched_pages < self.max_pages
@@ -112,12 +105,8 @@ class BatchOrchestrator:
             # Wake up (or continue) when an activity signals us with more work, when it completes, or when 
             # we're ready to process a new page.
             await workflow.wait_condition(
-                lambda: self.was_signaled_with_page() or 
-                    self.is_new_page_ready(num_launched_pages) or
-                    self.work_is_complete())
-            if self.was_signaled_with_page():
-                self.enqueue_page(self.pop_signaled_page())
-            elif self.is_new_page_ready(num_launched_pages):
+                lambda: self.is_new_page_ready(num_launched_pages) or self.work_is_complete())
+            if self.is_new_page_ready(num_launched_pages):
                 nextPage = self.pending_pages.pop()
                 self.process_page(input=input, pageNum = num_launched_pages, page = nextPage)
                 num_launched_pages += 1
@@ -138,7 +127,7 @@ async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage)
         raise Exception(
             f"You passed batch processor name {batchPageProcessorName} into the BatchOrchestrator, but it was not registered on " +
             f"your activity worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
-            "Available functions: {list_page_processors()}")
+            f"Available functions: {list_page_processors()}")
     return await userProvidedActivity(context)
     
 
