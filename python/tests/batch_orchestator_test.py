@@ -36,8 +36,8 @@ async def test_one_page(client: Client):
 async def spawns_second_page(context: BatchPageProcessorContext):
     page = context.getPage()
     if page.cursor.i == 0:
-        await context.enqueueNextPage(
-            BatchOrchestratorPage(MyCursor(page.cursor.i + page.pageSize), page.pageSize)
+        await context.enqueue_next_page(
+            BatchOrchestratorPage(MyCursor(page.cursor.i + page.page_size), page.page_size)
         )
         print(f"Signaled the workflow {page}")
     print(f"Processing page {page}")

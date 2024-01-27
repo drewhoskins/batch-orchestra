@@ -14,4 +14,4 @@ class MyCursor:
 @dataclass
 class BatchOrchestratorPage:
     cursor: MyCursor
-    pageSize: int
+    page_size: int

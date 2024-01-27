@@ -8,7 +8,7 @@ from batch_page_processor_registry import page_processor
 async def process_fakedb_page(context: BatchPageProcessorContext):
     page = context.getPage()
     if page.cursor.i == 0:
-        await context.enqueueNextPage(
+        await context.enqueue_next_page(
             BatchOrchestratorPage(MyCursor(page.cursor.i + page.pageSize), page.pageSize)
         )
         print(f"Signaled the workflow {page}")

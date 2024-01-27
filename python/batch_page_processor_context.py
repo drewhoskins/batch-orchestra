@@ -7,25 +7,25 @@ import batch_orchestrator
 class BatchPageProcessorContext:
     def __init__(self, *, page, workflowInfo):
         self.page = page
-        self.workflowInfo = workflowInfo
-        self.workflowClient: Optional[Client] = None
+        self.workflow_info = workflowInfo
+        self.workflow_client: Optional[Client] = None
 
     async def async_init(self)-> BatchPageProcessorContext:
-        self.workflowClient = await Client.connect("localhost:7233")
-        self.parentWorkflow = self.workflowClient.get_workflow_handle(
-            self.workflowInfo.workflow_id, run_id = self.workflowInfo.workflow_run_id)
+        self.workflow_client = await Client.connect("localhost:7233")
+        self.parent_workflow = self.workflow_client.get_workflow_handle(
+            self.workflow_info.workflow_id, run_id = self.workflow_info.workflow_run_id)
 
         return self
 
     def getPage(self):
         return self.page
     
-    async def enqueueNextPage(self, page):
-        assert self.parentWorkflow is not None, \
+    async def enqueue_next_page(self, page):
+        assert self.parent_workflow is not None, \
             ("BatchPageProcessorContext.async_init() was not called.  This class should only be " +
             "instantiated by the temporal-batch library.")
-        await self.parentWorkflow.signal(
-            batch_orchestrator.BatchOrchestrator.signalAddPage, 
+        await self.parent_workflow.signal(
+            batch_orchestrator.BatchOrchestrator.signal_add_page, 
             page
         )
     
