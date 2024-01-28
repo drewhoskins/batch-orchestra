@@ -1,7 +1,7 @@
 from asyncio import Future
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Dict, Generic, List, Optional, TypeVar
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 from temporalio import workflow, activity
 
@@ -69,7 +69,7 @@ class BatchOrchestrator:
     def is_new_page_ready(self, num_launched_pages: int) -> bool:
         return len(self.processing_pages) < self.max_parallelism and len(self.pending_pages) > 0 and num_launched_pages < self.max_pages
 
-    def on_page_processed(self, future: Future[str], pageNum: int, page: BatchOrchestratorPage):
+    def on_page_processed(self, future: Future[str], pageNum: int, page: BatchOrchestratorPage) -> None:
         exception = future.exception()
         if exception:
             # TODO - real error handler
@@ -80,7 +80,7 @@ class BatchOrchestrator:
         self.num_pages_processed += 1
 
     # Initiate processing the page and register a callback to record that it finished
-    def process_page(self, *, input: BatchOrchestratorInput, pageNum: int, page: BatchOrchestratorPage):
+    def process_page(self, *, input: BatchOrchestratorInput, pageNum: int, page: BatchOrchestratorPage) -> None:
         self.processing_pages[pageNum] = workflow.start_activity(
             process_page, 
             args=[input.page_processor, page, input.page_processor_args], 
@@ -122,8 +122,9 @@ class BatchOrchestrator:
 
 
 # convert batchPageProcessorName to a function and call it with the page
+# Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
 @activity.defn
-async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage, args: Optional[str]):
+async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage, args: Optional[str]) -> Any:
     context = await batch_page_processor_context.BatchPageProcessorContext(
         page=page, 
         args=args,

@@ -16,7 +16,7 @@ from batch_page_processor_registry import page_processor
 class MyCursor:
     i: int
 
-    def to_json(self):
+    def to_json(self) -> str:
         return json.dumps(asdict(self))
     
     @staticmethod
@@ -27,7 +27,7 @@ class MyCursor:
 class MyArgs:
     num_pages_to_process: int
 
-    def to_json(self):
+    def to_json(self) -> str:
         return json.dumps(asdict(self))
     
     @staticmethod

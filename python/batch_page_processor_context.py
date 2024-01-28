@@ -20,7 +20,7 @@ class BatchPageProcessorContext:
 
         return self
 
-    def get_page(self):
+    def get_page(self) -> BatchOrchestratorPage:
         return self.page
 
     # Gets user-provided args passed in BatchOrchestratorInput.page_processor_args
@@ -30,7 +30,7 @@ class BatchPageProcessorContext:
             raise ValueError("You cannot use get_args because you did not pass any args into BatchOrchestratorInput.page_processor_args")
         return result 
     
-    async def enqueue_next_page(self, page):
+    async def enqueue_next_page(self, page) -> None:
         assert self.parent_workflow is not None, \
             ("BatchPageProcessorContext.async_init() was not called.  This class should only be " +
             "instantiated by the temporal-batch library.")

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from asyncio import sleep
 from dataclasses import asdict, dataclass
 import json
@@ -9,11 +10,11 @@ from batch_page_processor_registry import page_processor
 class FakeDBCursor:
     i: int
 
-    def to_json(self):
+    def to_json(self) -> str:
         return json.dumps(asdict(self))
     
     @staticmethod
-    def from_json(json_str):
+    def from_json(json_str) -> FakeDBCursor:
         return FakeDBCursor(**json.loads(json_str))
 
 
