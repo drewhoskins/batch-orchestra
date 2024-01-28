@@ -15,7 +15,7 @@ async def main():
     # Execute the batch executor workflow
     result = await client.execute_workflow(
         BatchOrchestrator.run, 
-        BatchOrchestratorInput(batch_name="my name", page_processor=process_fakedb_page.__name__, cursor=FakeDBCursor(0).to_json(), max_parallelism=3), 
+        BatchOrchestratorInput(batch_name="my name", page_processor=process_fakedb_page.__name__, first_cursor=FakeDBCursor(0).to_json(), max_parallelism=3), 
         id="my-workflow-id", 
         task_queue="my-task-queue")
 

@@ -43,7 +43,7 @@ async def test_one_page(client: Client):
     task_queue_name = str(uuid.uuid4())
 
     async with batch_worker(client, task_queue_name):
-        input = BatchOrchestratorInput(batch_name='my_batch', page_processor=processes_one_page.__name__, max_parallelism=3, cursor=default_cursor())
+        input = BatchOrchestratorInput(batch_name='my_batch', page_processor=processes_one_page.__name__, max_parallelism=3, first_cursor=default_cursor())
         handle = await client.start_workflow(
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
@@ -68,7 +68,7 @@ async def processes_two_pages(context: BatchPageProcessorContext):
 async def test_two_pages(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
-        input = BatchOrchestratorInput(batch_name='my_batch', page_processor=processes_two_pages.__name__, max_parallelism=10, cursor=default_cursor())
+        input = BatchOrchestratorInput(batch_name='my_batch', page_processor=processes_two_pages.__name__, max_parallelism=10, first_cursor=default_cursor())
         handle = await client.start_workflow(
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
@@ -96,7 +96,7 @@ async def test_max_parallelism(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         max_parallelism = 3
-        input = BatchOrchestratorInput(batch_name='my_batch', page_processor=processes_six_pages.__name__, max_parallelism=max_parallelism, cursor=default_cursor())
+        input = BatchOrchestratorInput(batch_name='my_batch', page_processor=processes_six_pages.__name__, max_parallelism=max_parallelism, first_cursor=default_cursor())
         handle = await client.start_workflow(
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )

@@ -21,7 +21,7 @@ class BatchOrchestratorInput:
     # The cursor, for example a database cursor, from which to start paginating.
     # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
     # you are dividing up a large dataset into multiple batches.
-    cursor: str
+    first_cursor: str
 
 # Paginates through a large dataset and executes it with controllable parallelism.  
 @workflow.defn
@@ -94,12 +94,12 @@ class BatchOrchestrator:
         workflow.logger.info("Starting batch executor")
 
         self.run_init(input)
-        start_cursor: str = input.cursor
+        first_cursor: str = input.first_cursor
         
         page_size = 10
         num_launched_pages = 0
         max_parallelism_achieved = 0
-        self.enqueue_page(BatchOrchestratorPage(start_cursor, page_size))
+        self.enqueue_page(BatchOrchestratorPage(first_cursor, page_size))
 
         while not self.work_is_complete():
             # Wake up (or continue) when an activity signals us with more work, when it completes, or when 
