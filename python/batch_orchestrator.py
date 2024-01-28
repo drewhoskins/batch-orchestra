@@ -22,6 +22,9 @@ class BatchOrchestratorInput:
     # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
     # you are dividing up a large dataset into multiple batches.
     first_cursor: str
+    # Global arguments to pass into each page processor, such as configuration.  Many will use json to serialize.
+    # Any arguments that need to vary per page should be included in your cursor.
+    page_processor_args: Optional[str] = None
 
 # Paginates through a large dataset and executes it with controllable parallelism.  
 @workflow.defn
@@ -80,7 +83,7 @@ class BatchOrchestrator:
     def process_page(self, *, input: BatchOrchestratorInput, pageNum: int, page: BatchOrchestratorPage):
         self.processing_pages[pageNum] = workflow.start_activity(
             process_page, 
-            args=[input.page_processor, page], 
+            args=[input.page_processor, page, input.page_processor_args], 
             start_to_close_timeout=timedelta(minutes=5))
         self.processing_pages[pageNum].add_done_callback(
             lambda future: self.on_page_processed(future, pageNum, page))
@@ -120,8 +123,11 @@ class BatchOrchestrator:
 
 # convert batchPageProcessorName to a function and call it with the page
 @activity.defn
-async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage):
-    context = await batch_page_processor_context.BatchPageProcessorContext(page=page, activity_info=activity.info()).async_init()
+async def process_page(batchPageProcessorName: str, page: BatchOrchestratorPage, args: Optional[str]):
+    context = await batch_page_processor_context.BatchPageProcessorContext(
+        page=page, 
+        args=args,
+        activity_info=activity.info()).async_init()
     userProvidedActivity = batch_page_processor_registry.get(batchPageProcessorName)
     if not userProvidedActivity:
         raise Exception(

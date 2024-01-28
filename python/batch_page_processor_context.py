@@ -7,9 +7,10 @@ from batch_orchestrator_page import BatchOrchestratorPage
 import batch_orchestrator
 
 class BatchPageProcessorContext:
-    def __init__(self, *, page: BatchOrchestratorPage, activity_info: temporalio.activity.Info):
+    def __init__(self, *, page: BatchOrchestratorPage, args: Optional[str], activity_info: temporalio.activity.Info):
         self.page = page
         self.activity_info = activity_info
+        self.args = args
         self.workflow_client: Optional[Client] = None
 
     async def async_init(self)-> BatchPageProcessorContext:
@@ -21,6 +22,13 @@ class BatchPageProcessorContext:
 
     def get_page(self):
         return self.page
+
+    # Gets user-provided args passed in BatchOrchestratorInput.page_processor_args
+    def get_args(self) -> str:
+        result = self.args
+        if result is None:
+            raise ValueError("You cannot use get_args because you did not pass any args into BatchOrchestratorInput.page_processor_args")
+        return result 
     
     async def enqueue_next_page(self, page):
         assert self.parent_workflow is not None, \
