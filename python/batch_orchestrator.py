@@ -6,7 +6,7 @@ from typing import Dict, Generic, List, Optional, TypeVar
 from temporalio import workflow, activity
 
 import batch_page_processor_context 
-from batch_orchestrator_page import BatchOrchestratorPage, MyCursor
+from batch_orchestrator_page import BatchOrchestratorPage
 from batch_page_processor_registry import list_page_processors, registry as batch_page_processor_registry
 
 
@@ -21,7 +21,7 @@ class BatchOrchestratorInput:
     # The cursor, for example a database cursor, from which to start paginating.
     # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
     # you are dividing up a large dataset into multiple batches.
-    cursor: Optional[MyCursor] = None
+    cursor: str
 
 # Paginates through a large dataset and executes it with controllable parallelism.  
 @workflow.defn
@@ -35,7 +35,7 @@ class BatchOrchestrator:
 
     def __init__(self):
         self.num_pages_processed: int = 0
-        self.processing_pages: Dict[int, Future[MyCursor]] = {}
+        self.processing_pages: Dict[int, Future[str]] = {}
         self.pending_pages: List[BatchOrchestratorPage] = []
         self.max_pages: int = 1000 # TODO measure a good limit
         self.max_parallelism: int = 0 # initialized later
@@ -66,7 +66,7 @@ class BatchOrchestrator:
     def is_new_page_ready(self, num_launched_pages: int) -> bool:
         return len(self.processing_pages) < self.max_parallelism and len(self.pending_pages) > 0 and num_launched_pages < self.max_pages
 
-    def on_page_processed(self, future: Future[MyCursor], pageNum: int, page: BatchOrchestratorPage):
+    def on_page_processed(self, future: Future[str], pageNum: int, page: BatchOrchestratorPage):
         exception = future.exception()
         if exception:
             # TODO - real error handler
@@ -94,7 +94,7 @@ class BatchOrchestrator:
         workflow.logger.info("Starting batch executor")
 
         self.run_init(input)
-        start_cursor: MyCursor = input.cursor or MyCursor(0)
+        start_cursor: str = input.cursor
         
         page_size = 10
         num_launched_pages = 0
