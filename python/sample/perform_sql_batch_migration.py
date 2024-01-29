@@ -45,6 +45,7 @@ async def main():
                 batch_name="inflate_product_prices_jan_2024", 
                 page_processor=inflate_product_prices.__name__, 
                 max_parallelism=5,
+                page_size=100,
                 page_processor_args=args.to_json()), 
             id=f"inflate_product_prices_jan_2024-{str(uuid.uuid4())}", 
             task_queue="my-task-queue")

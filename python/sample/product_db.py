@@ -61,7 +61,6 @@ class ProductDB:
         updated_price = product.price * factor
         # Idempotently update the price
         query = f"UPDATE my_products SET price = {updated_price}, did_inflate_migration = 1 WHERE key = '{product.key}' AND did_inflate_migration = 0"
-        print(f"Executing query: {query}")
         cursor.execute(query)
         conn.commit()
 

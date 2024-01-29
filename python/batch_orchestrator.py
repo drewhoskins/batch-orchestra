@@ -30,6 +30,13 @@ class BatchOrchestratorInput:
     # Use this to manage load on your downstream dependencies such as DBs or APIs by limiting the number of pages
     # processed simultaneously.
     max_parallelism: int
+    # The number of items per page, to process in series.  Choose an amount that you can comfortably
+    # process within the page_timeout_seconds.
+    page_size: int
+    # The start_to_close_timeout of the activity that runs your page processor.
+    # This should typically be within the drain allowance of the worker that runs your page processor.  That 
+    # would allow your activity to finish in case of a graceful shutdown.
+    page_timeout_seconds: int = 300
     # The cursor, for example a database cursor, from which to start paginating.
     # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
     # you are dividing up a large dataset into multiple batches.
@@ -54,12 +61,10 @@ class BatchOrchestrator:
         self.processing_pages: Dict[int, Future[str]] = {}
         self.pending_pages: List[BatchPage] = []
         self.max_pages: int = 1000 # TODO measure a good limit
-        self.max_parallelism: int = 0 # initialized later
 
     def run_init(self, input: BatchOrchestratorInput):
-        self.max_parallelism = input.max_parallelism
+        self.input = input
     
-
     #
     # Getting signals when new pages are queued for processing
     #
@@ -80,7 +85,7 @@ class BatchOrchestrator:
         return not self.pending_pages and not self.processing_pages
     
     def is_new_page_ready(self, num_launched_pages: int) -> bool:
-        return len(self.processing_pages) < self.max_parallelism and len(self.pending_pages) > 0 and num_launched_pages < self.max_pages
+        return len(self.processing_pages) < self.input.max_parallelism and len(self.pending_pages) > 0 and num_launched_pages < self.max_pages
 
     def on_page_processed(self, future: Future[str], pageNum: int, page: BatchPage) -> None:
         exception = future.exception()
@@ -93,11 +98,11 @@ class BatchOrchestrator:
         self.num_pages_processed += 1
 
     # Initiate processing the page and register a callback to record that it finished
-    def process_page(self, *, input: BatchOrchestratorInput, pageNum: int, page: BatchPage) -> None:
+    def start_page_processor_activity(self, *, pageNum: int, page: BatchPage) -> None:
         self.processing_pages[pageNum] = workflow.start_activity(
             process_page, 
-            args=[input.page_processor, page, input.page_processor_args], 
-            start_to_close_timeout=timedelta(minutes=5))
+            args=[self.input.page_processor, page, self.input.page_processor_args], 
+            start_to_close_timeout=timedelta(seconds=self.input.page_timeout_seconds))
         self.processing_pages[pageNum].add_done_callback(
             lambda future: self.on_page_processed(future, pageNum, page))
 
@@ -112,10 +117,9 @@ class BatchOrchestrator:
         self.run_init(input)
         first_cursor_str: str = input.first_cursor_str
         
-        page_size = 10
         num_launched_pages = 0
         max_parallelism_achieved = 0
-        self.enqueue_page(BatchPage(first_cursor_str, page_size))
+        self.enqueue_page(BatchPage(first_cursor_str, self.input.page_size))
 
         while not self.work_is_complete():
             # Wake up (or continue) when an activity signals us with more work, when it completes, or when 
@@ -124,10 +128,9 @@ class BatchOrchestrator:
                 lambda: self.is_new_page_ready(num_launched_pages) or self.work_is_complete())
             if self.is_new_page_ready(num_launched_pages):
                 nextPage = self.pending_pages.pop()
-                self.process_page(input=input, pageNum = num_launched_pages, page = nextPage)
+                self.start_page_processor_activity(pageNum = num_launched_pages, page = nextPage)
                 num_launched_pages += 1
             max_parallelism_achieved = max(max_parallelism_achieved, len(self.processing_pages))
-
 
         workflow.logger.info(f"Batch executor completed {self.num_pages_processed} pages")
         result = BatchOrchestrator.Results(num_pages_processed=self.num_pages_processed, max_parallelism_achieved=max_parallelism_achieved)

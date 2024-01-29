@@ -48,37 +48,43 @@ class BatchPage:
 # This class is the only argument passed to your page processor function but contains everything you need.
 class BatchProcessorContext:
     def __init__(self, *, page: BatchPage, args: Optional[str], activity_info: temporalio.activity.Info):
-        self.page = page
-        self.activity_info = activity_info
-        self.args = args
-        self.workflow_client: Optional[Client] = None
+        self._page = page
+        self._activity_info = activity_info
+        self._args = args
+        self._workflow_client: Optional[Client] = None
+        self._parent_workflow: Optional[temporalio.WorkflowHandle] = None
 
     async def async_init(self)-> BatchProcessorContext:
-        self.workflow_client = await Client.connect("localhost:7233")
-        self.parent_workflow = self.workflow_client.get_workflow_handle(
-            self.activity_info.workflow_id, run_id = self.activity_info.workflow_run_id)
+        self._workflow_client = await Client.connect("localhost:7233")
+        self._parent_workflow = self._workflow_client.get_workflow_handle(
+            self._activity_info.workflow_id, run_id = self._activity_info.workflow_run_id)
 
         return self
 
     def get_page(self) -> BatchPage:
-        return self.page
+        return self._page
 
     # Gets global, user-provided args passed in BatchOrchestratorInput.page_processor_args.  
     # Any values that can differ per page should insted go into your cursor inside BatchPage.
     # Suggested usage: use JSON and deserialize the args into a dataclass.
     def get_args(self) -> str:
-        result = self.args
+        result = self._args
         if result is None:
             raise ValueError("You cannot use get_args because you did not pass any args into BatchOrchestratorInput.page_processor_args")
         return result 
     
     # Call this with your next cursor before you process the page to enqueue the next chunk on the BatchOrchestator.
     async def enqueue_next_page(self, page) -> None:
-        assert self.parent_workflow is not None, \
+        assert self._parent_workflow is not None, \
             ("BatchProcessorContext.async_init() was not called.  This class should only be " +
             "instantiated by the temporal-batch library.")
-        await self.parent_workflow.signal(
+        await self._parent_workflow.signal(
             'signal_add_page', # use string instead of literal to avoid upward dependency between this file and batch_orchestrator.py
             page
         )
+    
+    # Advanced: use this for low-level access to details about the temporal activity in which your page processor runs, such as 
+    # for adding heartbeats to your activity.
+    def get_activity_info(self) -> temporal.activity.Info:
+        return self._activity_info
 
