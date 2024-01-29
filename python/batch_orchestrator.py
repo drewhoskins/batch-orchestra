@@ -33,7 +33,7 @@ class BatchOrchestratorInput:
     # The cursor, for example a database cursor, from which to start paginating.
     # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
     # you are dividing up a large dataset into multiple batches.
-    first_cursor: str
+    first_cursor: str = ""
     # Global arguments to pass into each page processor, such as configuration.  Many will use json to serialize.
     # Any arguments that need to vary per page should be included in your cursor.
     page_processor_args: Optional[str] = None

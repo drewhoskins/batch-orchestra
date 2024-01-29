@@ -10,7 +10,10 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+# Tested with python 3.10.  If you want to support an earlier version of python, give it a try.
+# Known 3.10 dependencies:
+# - I believe that the kw_only annotation on @dataclass is 3.10.  That can probably be easily worked around.
+python = "^3.10"
 temporalio = "^1.5.0"
 
 [tool.pytest.ini_options]
@@ -22,6 +25,7 @@ log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(linen
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
 pytest-asyncio = "^0.18.3"
+wonderwords = "^2.2.0"
 
 [build-system]
 requires = ["poetry-core"]

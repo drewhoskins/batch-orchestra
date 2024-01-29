@@ -11,7 +11,7 @@ import logging
 
 from batch_orchestrator import BatchOrchestrator, process_page
 # Import our registry of page processors
-import process_fakedb_page
+import inflate_product_prices_page_processor
 
 interrupt_event = asyncio.Event()
 
