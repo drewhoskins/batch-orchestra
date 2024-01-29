@@ -10,6 +10,7 @@ from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 from inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, ProductDBCursor
 from product_db import ProductDB
 
+
 #
 # This sample shows a typical parallel batch migration of an entire sqlite table on an example table of products
 # and their prices.  This file is the caller; see inflate_product_prices_page_processor.py for the implementation.
@@ -25,17 +26,16 @@ async def main():
     db_file = NamedTemporaryFile(suffix="_my_product.db", delete=False)
     # Create client connected to server at the given address
     db_connection = ProductDB.get_db_connection(db_file.name)
-    ProductDB.populate_table(db_connection, num_records=1000)
+    num_records = 1000
+    ProductDB.populate_table(db_connection, num_records=num_records)
 
     try:
         print(f"Creating a temporary database in {db_file.name}")
         db_connection = ProductDB.get_db_connection(db_file.name)
         cursor = ""
         # Make sure we initialized the page pre-migration
-        for i in range(0, 10):
-            products = ProductDB.fetch_page(db_connection, cursor, 100)
-            for product in products:
-                assert not product.did_inflate_migration
+        for (i, product) in ProductDB.for_each_product(db_connection):
+            print(f"Record {i} before migration: {product}")
 
         args = ConfigArgs(db_file=db_file.name)
         # Execute the migration
@@ -54,20 +54,15 @@ async def main():
         # Verify that we adjusted the prices on all rows.
         db_connection = ProductDB.get_db_connection(db_file.name)
         cursor = ""
-        bad_apples = {}
-        j = 0
-        for i in range(0, 10):
-            products = ProductDB.fetch_page(db_connection, cursor, 100)
-            for product in products:
-                j += 1
-                if not product.did_inflate_migration:
-                    bad_apples[j] = product
-            cursor = products[-1].key
-        if len(bad_apples) > 0:
-            print(f"Found {len(bad_apples)} products that weren't migrated:")
-            for k, v in bad_apples.items():
-                print(f"{k}: {v}")
+        num_bad_apples = 0
+
+        for (i, product) in ProductDB.for_each_product(db_connection):
+            if not product.did_inflate_migration:
+                num_bad_apples += 1
+                print(f"Record {i} not migrated: {product}")
+        if num_bad_apples > 0:
             raise Exception("Found unmigrated products")
+
     finally:
         os.remove(db_file.name)
 

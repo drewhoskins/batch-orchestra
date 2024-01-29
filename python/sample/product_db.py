@@ -13,6 +13,9 @@ class Product:
         self.price = price
         self.did_inflate_migration: bool = (did_inflate_migration == 1)
 
+    def __str__(self):
+        return f"Product(key={self.key}, name={self.name}, price={self.price}, did_inflate_migration={self.did_inflate_migration})"
+
 
 class ProductDB:
 
@@ -57,7 +60,23 @@ class ProductDB:
         cursor = conn.cursor()
         updated_price = product.price * factor
         # Idempotently update the price
-        cursor.execute(f"UPDATE my_products SET price = {product.price} AND did_inflate_migration = 1 WHERE key = '{product.key}' AND did_inflate_migration = 0")
+        query = f"UPDATE my_products SET price = {updated_price}, did_inflate_migration = 1 WHERE key = '{product.key}' AND did_inflate_migration = 0"
+        print(f"Executing query: {query}")
+        cursor.execute(query)
         conn.commit()
+
+    @staticmethod
+    def for_each_product(db_connection):
+        cursor = ""
+        i = 0
+        while True:
+            products = ProductDB.fetch_page(db_connection, cursor, 100)
+            if len(products) == 0:
+                break
+            for product in products:
+                yield i, product
+                i += 1
+            cursor = products[-1].key
+
 
     
