@@ -38,7 +38,7 @@ def default_cursor():
 
 @page_processor
 async def processes_one_page(context: BatchProcessorContext):
-    return context.get_page().cursor
+    return context.get_page().cursor_str
 
 def batch_worker(client: Client, task_queue_name: str):
     return Worker(
@@ -57,7 +57,7 @@ async def test_one_page(client: Client):
             batch_name='my_batch', 
             page_processor=processes_n_pages.__name__, 
             max_parallelism=3, 
-            first_cursor=default_cursor(),
+            first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_pages_to_process=1).to_json())
         handle = await client.start_workflow(
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
@@ -75,7 +75,7 @@ async def test_two_pages(client: Client):
             batch_name='my_batch', 
             page_processor=processes_n_pages.__name__, 
             max_parallelism=10, 
-            first_cursor=default_cursor(),
+            first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_pages_to_process=2).to_json())
         handle = await client.start_workflow(
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
@@ -88,7 +88,7 @@ async def test_two_pages(client: Client):
 async def processes_n_pages(context: BatchProcessorContext):
     page = context.get_page()
     args = MyArgs.from_json(context.get_args())
-    cursor = MyCursor.from_json(page.cursor)
+    cursor = MyCursor.from_json(page.cursor_str)
     if cursor.i < (args.num_pages_to_process - 1) * page.page_size:
         await context.enqueue_next_page(
             BatchPage(MyCursor(cursor.i + page.page_size).to_json(), page.page_size)
@@ -109,7 +109,7 @@ async def test_max_parallelism(client: Client):
             batch_name='my_batch', 
             page_processor=processes_n_pages.__name__, 
             max_parallelism=max_parallelism, 
-            first_cursor=default_cursor(),
+            first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_pages_to_process=6).to_json())
         handle = await client.start_workflow(
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name

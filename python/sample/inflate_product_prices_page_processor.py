@@ -36,13 +36,12 @@ class ProductDBCursor:
 @page_processor
 async def inflate_product_prices(context: BatchProcessorContext):
     page = context.get_page()
-    if page.cursor == "":
+    if page.cursor_str == "":
         cursor = ProductDBCursor(key=None)
     else:
-        cursor = ProductDBCursor.from_json(page.cursor)
+        cursor = ProductDBCursor.from_json(page.cursor_str)
 
     args = ConfigArgs.from_json(context.get_args())
-    print(f"DB FILE: {args.db_file}")
     db_connection = ProductDB.get_db_connection(args.db_file)
     
     products = ProductDB.fetch_page(db_connection, cursor.key, page.page_size)

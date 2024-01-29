@@ -10,7 +10,7 @@ from batch_processor import BatchProcessorContext, BatchPage, page_processor
 @page_processor
 async def returns_cursor(context: BatchProcessorContext):
     assert context.get_args() == "some_args"
-    return context.get_page().cursor
+    return context.get_page().cursor_str
 
 
 @pytest.mark.asyncio

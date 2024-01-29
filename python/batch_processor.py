@@ -41,8 +41,8 @@ def list_page_processors():
 @dataclass
 class BatchPage:
     # Your cursor serialized as a string.  You might use json for example.
-    # When sdk-python supports generics, you'll be able to use your cursor type here.
-    cursor: str
+    # When sdk-python supports generics, we can add support for (serializable) cursor types here.
+    cursor_str: str
     page_size: int
     
 # This class is the only argument passed to your page processor function but contains everything you need.

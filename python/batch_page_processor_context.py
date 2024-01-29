@@ -10,8 +10,8 @@ from temporalio.client import Client
 @dataclass
 class BatchPage:
     # Your cursor serialized as a string.  You might use json for example.
-    # When sdk-python supports generics, you'll be able to use your cursor type here.
-    cursor: str
+    # When sdk-python supports generics, you'll be able to use a serializable cursor type directly here.
+    cursor_str: str
     page_size: int
     
 class BatchProcessorContext:

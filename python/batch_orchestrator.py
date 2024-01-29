@@ -33,7 +33,8 @@ class BatchOrchestratorInput:
     # The cursor, for example a database cursor, from which to start paginating.
     # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
     # you are dividing up a large dataset into multiple batches.
-    first_cursor: str = ""
+    # When sdk-python supports generics, we can add support for (serializable) cursor types here.
+    first_cursor_str: str = ""
     # Global arguments to pass into each page processor, such as configuration.  Many will use json to serialize.
     # Any arguments that need to vary per page should be included in your cursor.
     page_processor_args: Optional[str] = None
@@ -48,7 +49,7 @@ class BatchOrchestrator:
         # You can monitor this to ensure you are getting as much parallel processing as you hoped for.
         max_parallelism_achieved: int
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.num_pages_processed: int = 0
         self.processing_pages: Dict[int, Future[str]] = {}
         self.pending_pages: List[BatchPage] = []
@@ -63,9 +64,9 @@ class BatchOrchestrator:
     # Getting signals when new pages are queued for processing
     #
         
-    def enqueue_page(self, BatchPage: BatchPage):
-        workflow.logger.info(f"Enqueuing page request for cursor {BatchPage.cursor}")
-        self.pending_pages.append(BatchPage)
+    def enqueue_page(self, page: BatchPage):
+        workflow.logger.info(f"Enqueuing page request for cursor {page.cursor_str}")
+        self.pending_pages.append(page)
      
     @workflow.signal
     async def signal_add_page(self, page: BatchPage) -> None:
@@ -109,12 +110,12 @@ class BatchOrchestrator:
         workflow.logger.info("Starting batch executor")
 
         self.run_init(input)
-        first_cursor: str = input.first_cursor
+        first_cursor_str: str = input.first_cursor_str
         
         page_size = 10
         num_launched_pages = 0
         max_parallelism_achieved = 0
-        self.enqueue_page(BatchPage(first_cursor, page_size))
+        self.enqueue_page(BatchPage(first_cursor_str, page_size))
 
         while not self.work_is_complete():
             # Wake up (or continue) when an activity signals us with more work, when it completes, or when 
