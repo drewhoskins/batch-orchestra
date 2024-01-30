@@ -1,7 +1,7 @@
 from asyncio import Future
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import timedelta
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Dict, List, Optional, Set
 
 from temporalio import workflow, activity
 
@@ -61,16 +61,20 @@ class BatchOrchestrator:
         self.processing_pages: Dict[int, Future[str]] = {}
         self.pending_pages: List[BatchPage] = []
         self.max_pages: int = 1000 # TODO measure a good limit
+        self.pages_processed: Set[str] = set()
 
     def run_init(self, input: BatchOrchestratorInput):
         self.input = input
+        workflow.logger.info(asdict(self.input))
     
     #
     # Getting signals when new pages are queued for processing
     #
         
     def enqueue_page(self, page: BatchPage):
-        workflow.logger.info(f"Enqueuing page request for cursor {page.cursor_str}")
+        now = workflow.now().strftime('%H:%M:%S.%f')
+
+        workflow.logger.info(f"{now} Enqueuing page request for cursor {page.cursor_str}")
         self.pending_pages.append(page)
      
     @workflow.signal
@@ -92,19 +96,24 @@ class BatchOrchestrator:
         if exception:
             # TODO - real error handler
             raise exception
-        workflow.logger.info(f"Batch executor completed {page} page at index {pageNum}")
+        workflow.logger.info(f"Batch executor completed {page.cursor_str} page at index {pageNum}")
         
         self.processing_pages.pop(pageNum)
         self.num_pages_processed += 1
 
     # Initiate processing the page and register a callback to record that it finished
     def start_page_processor_activity(self, *, pageNum: int, page: BatchPage) -> None:
+        if page.cursor_str in self.pages_processed:
+            # This should be very rare since we heartbeat within page processor to cause the activity not to re-send the signal.
+            workflow.logger.warn(f"Got signaled for page {page.cursor_str}, but skipping because it was already signaled for.")
+            return
         self.processing_pages[pageNum] = workflow.start_activity(
             process_page, 
             args=[self.input.page_processor, page, self.input.page_processor_args], 
             start_to_close_timeout=timedelta(seconds=self.input.page_timeout_seconds))
         self.processing_pages[pageNum].add_done_callback(
             lambda future: self.on_page_processed(future, pageNum, page))
+        self.pages_processed.add(page.cursor_str)
 
     #
     # Main algorithm

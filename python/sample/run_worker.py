@@ -2,6 +2,8 @@
 # you can start this sample worker with this script:
 #    poetry run python sample/run_worker.py
 import asyncio
+import multiprocessing
+import signal
 import sys, os
 
 from temporalio.client import Client
@@ -16,7 +18,8 @@ import inflate_product_prices_page_processor
 interrupt_event = asyncio.Event()
 
 
-async def main():
+async def worker_async():
+    logging.basicConfig(level=logging.INFO)
     # Connect client
     client = await Client.connect("localhost:7233")
 
@@ -32,12 +35,28 @@ async def main():
         await interrupt_event.wait()
         logging.info("Shutting down")
 
+def worker():
+    asyncio.run(worker_async())
+
+def main():
+    processes = []
+
+    for _ in range(5): 
+        p = multiprocessing.Process(target=worker)
+        p.start()
+        processes.append(p)
+
+    return processes
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    loop = asyncio.new_event_loop()
+    processes = main()
+
     try:
-        loop.run_until_complete(main())
+        for p in processes:
+            p.join()
     except KeyboardInterrupt:
-        interrupt_event.set()
-        loop.run_until_complete(loop.shutdown_asyncgens())
+        print("Caught KeyboardInterrupt, terminating processes")
+        for p in processes:
+            p.terminate()
+        for p in processes:
+            p.join()

@@ -1,8 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
-import temporalio.activity
-from temporalio.client import Client
+from temporalio import activity
+from temporalio.client import Client, WorkflowHandle
 
 # 
 # batch_processor library
@@ -52,7 +52,7 @@ class BatchProcessorContext:
         self._activity_info = activity_info
         self._args = args
         self._workflow_client: Optional[Client] = None
-        self._parent_workflow: Optional[temporalio.WorkflowHandle] = None
+        self._parent_workflow: Optional[WorkflowHandle] = None
 
     async def async_init(self)-> BatchProcessorContext:
         self._workflow_client = await Client.connect("localhost:7233")
@@ -76,15 +76,21 @@ class BatchProcessorContext:
     # Call this with your next cursor before you process the page to enqueue the next chunk on the BatchOrchestator.
     async def enqueue_next_page(self, page) -> None:
         assert self._parent_workflow is not None, \
-            ("BatchProcessorContext.async_init() was not called.  This class should only be " +
+            ("BatchProcessorContext.async_init() was never called.  This class should only be " +
             "instantiated by the temporal-batch library.")
+        heartbeat_details = activity.info().heartbeat_details
+        # Minimize the chance of a re-signal when the activity fails and retries, by checking if we recorded that we already signaled.
+        if "signaled_next_page" in heartbeat_details:
+            return
+
         await self._parent_workflow.signal(
             'signal_add_page', # use string instead of literal to avoid upward dependency between this file and batch_orchestrator.py
             page
         )
+        activity.heartbeat("signaled_next_page")
     
     # Advanced: use this for low-level access to details about the temporal activity in which your page processor runs, such as 
     # for adding heartbeats to your activity.
-    def get_activity_info(self) -> temporal.activity.Info:
+    def get_activity_info(self) -> temporalio.activity.Info:
         return self._activity_info
 

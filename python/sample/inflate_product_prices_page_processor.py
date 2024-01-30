@@ -2,11 +2,10 @@ from __future__ import annotations
 from asyncio import sleep
 from dataclasses import asdict, dataclass
 import json
+import sys
 from typing import Optional
+
 from batch_processor import BatchProcessorContext, BatchPage, page_processor
-
-import sqlite3
-
 from product_db import ProductDB
 
 @dataclass
@@ -47,14 +46,21 @@ async def inflate_product_prices(context: BatchProcessorContext):
     products = ProductDB.fetch_page(db_connection, cursor.key, page.page_size)
 
     if len(products) == page.page_size:
+        last_heartbeat = context.get_activity_info().heartbeat_details
         # We got a full set of results, so there are likely more pages to process
         await context.enqueue_next_page(
             BatchPage(ProductDBCursor(products[-1].key).to_json(), page.page_size)
         )
-    print(f"Processing page {page}")
+
+    num_processed = 0
     for product in products:
         # Note that this write is idempotent, so if we have to retry something that already succeeded,
         # we won't multiply by 1.04^2
-        ProductDB.inflate_price(db_connection, product, 1.04)
-    print(f"Finished processing {page.page_size} rows of page {page}")
+        await ProductDB.inflate_price(db_connection, product, 1.04)
+        num_processed += 1
+        # Allows the worker to context-switch, showing off parallelism when testing on systems with fewer cores.
+
+    next_page_message = f"Next page cursor = {products[-1].key}" if products else "And that's all, folks!"
+    print(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
+    sys.stdout.flush()
     

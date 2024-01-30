@@ -142,7 +142,9 @@ async def test_page_size(client: Client):
 
 @page_processor
 async def asserts_timeout(context: BatchProcessorContext):
-    assert context.get_activity_info().start_to_close_timeout.seconds == 123
+    timeout = context.get_activity_info().start_to_close_timeout
+    assert timeout is not None
+    assert timeout.seconds == 123
 
 @pytest.mark.asyncio
 async def test_timeout(client: Client):

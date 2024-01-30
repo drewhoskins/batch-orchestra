@@ -56,7 +56,7 @@ class ProductDB:
         return [Product(*row) for row in result_rows]
     
     @staticmethod
-    def inflate_price(conn: sqlite3.Connection, product: Product, factor: float):
+    async def inflate_price(conn: sqlite3.Connection, product: Product, factor: float):
         cursor = conn.cursor()
         updated_price = product.price * factor
         # Idempotently update the price
