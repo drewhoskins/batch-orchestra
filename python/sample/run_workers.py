@@ -1,6 +1,6 @@
 # Having set up a temporal server at localhost:7233,
-# you can start this sample worker with this script:
-#    poetry run python sample/run_worker.py
+# you can start 5 sample workers with this script:
+#    poetry run python sample/run_workers.py
 import asyncio
 import multiprocessing
 import signal
