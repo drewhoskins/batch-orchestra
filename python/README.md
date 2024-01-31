@@ -2,14 +2,16 @@
 
 ## Quick Start
 
-First, set up [Temporal prerequisites](../README.md)
+First, set up [Temporal prerequisites](../README.md#quick-start)
 
 You'll also need python (I've tested with 3.10) and [poetry](https://python-poetry.org/).
 
 If you don't already have poetry:
 
     python -m pip install poetry
+    
 or
+
     pipx install poetry
 
 Clone temporal-batch and pull the latest source.
