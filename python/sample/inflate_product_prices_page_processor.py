@@ -32,6 +32,8 @@ class ProductDBCursor:
         return ProductDBCursor(**json.loads(json_str))
 
 
+# Raises OperationalError if it can't acquire a lock, and then it will be retried.
+# I decided to leave this kinda flaky to show off the resilience of the BatchOrchestrator.
 @page_processor
 async def inflate_product_prices(context: BatchProcessorContext):
     page = context.get_page()
