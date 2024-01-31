@@ -1,10 +1,10 @@
-# Python Development Usage
+# Python
 
-Prerequisites:
+## Quick Start
 
-* Python >= 3.8
-* [Poetry](https://python-poetry.org)
-* [Local Temporal server running](https://docs.temporal.io/application-development/foundations#run-a-development-cluster)
+First, set up [Temporal prerequisites](../README.md)
+
+You'll also need python (I've tested with 3.10) and [poetry](https://python-poetry.org/).
 
 If you don't already have poetry:
 
@@ -12,14 +12,17 @@ If you don't already have poetry:
 or
     pipx install poetry
 
-Then, with the temporal-batch repository cloned, run the following from the python directory:
+Clone temporal-batch and pull the latest source.
+
+Then, run the following from the python directory:
 
     poetry install
 
-That loads all required dependencies. Then use pytest to run a test:
+That loads all required dependencies. 
 
-    poetry run pytest tests/process_page_test.py
+Make sure temporal-server is running on localhost:7233 (the default)
+Then use pytest to run the tests:
 
-Some tests require a local temporal server running.
+    poetry run pytest tests/
 
-    TODO
+You may also run the sample.  See its [README](./sample/README.md)

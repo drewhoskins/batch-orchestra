@@ -10,7 +10,12 @@ It supports
 
 All you have to build is an ![Activity](https://docs.temporal.io/activities) to process manageable chunks.
 
-# Currently supported languages
+# Quick Start
+
+To develop anything using temporal on your machine, first get a [local Temporal server running](https://docs.temporal.io/application-development/foundations#run-a-development-cluster)
+
+Then look at the language-specific quickstart guides:
+
 * [Python](./python/README.md)
 
 
