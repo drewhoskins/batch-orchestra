@@ -11,9 +11,12 @@ from temporalio.worker import Worker
 
 import logging
 
-from batch_orchestrator import BatchOrchestrator, process_page
+from batch_orchestrator import BatchOrchestrator, process_page, batch_orchestrator_data_converter
 # Import our registry of page processors
 import inflate_product_prices_page_processor
+from test_workflow import test_run
+
+from test_workflow import TestWorkflow
 
 interrupt_event = asyncio.Event()
 
@@ -21,14 +24,15 @@ interrupt_event = asyncio.Event()
 async def worker_async():
     logging.basicConfig(level=logging.INFO)
     # Connect client
-    client = await Client.connect("localhost:7233")
+    client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
 
     # Run a worker for the activities and workflow
     async with Worker(
         client,
         task_queue="my-task-queue",
-        activities=[process_page],
-        workflows=[BatchOrchestrator],
+        activities=[process_page, test_run],
+        workflows=[BatchOrchestrator, TestWorkflow],
+        debug_mode=True,
     ):
         # Wait until interrupted
         logging.info("Worker started, ctrl+c to exit")

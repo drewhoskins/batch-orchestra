@@ -7,6 +7,7 @@ import pytest
 import pytest_asyncio
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
+from batch_orchestrator import batch_orchestrator_data_converter
 
 #
 # This file was copied from https://github.com/temporalio/samples-python/blob/main/tests/conftest.py
@@ -51,7 +52,7 @@ async def env(request) -> AsyncGenerator[WorkflowEnvironment, None]:
         raise NotImplementedError("Time-skipping mode is untested.")
 #        env = await WorkflowEnvironment.start_time_skipping()
     else:
-        env = WorkflowEnvironment.from_client(await Client.connect(env_type))
+        env = WorkflowEnvironment.from_client(await Client.connect(env_type, data_converter=batch_orchestrator_data_converter))
     yield env
     await env.shutdown()
 

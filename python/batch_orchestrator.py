@@ -6,9 +6,20 @@ from typing import Any, Dict, List, Optional, Set
 
 from temporalio import workflow, activity
 
-from batch_processor import BatchProcessorContext, list_page_processors, page_processor_registry
+from temporalio import workflow
+import temporalio.converter
+from temporalio.common import RetryPolicy
+from temporalio.api.common.v1 import Payload
+from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.converter import (
+    CompositePayloadConverter,
+    DefaultPayloadConverter,
+    EncodingPayloadConverter,
+)
 
-from batch_processor import BatchPage
+from batch_processor import list_page_processors, page_processor_registry
+from batch_processor import BatchPage, BatchProcessorRetryableError, process_page
+
 
 #
 # batch_orchestrator library
@@ -143,23 +154,102 @@ class BatchOrchestrator:
                     num_launched_pages += 1
                 self.max_parallelism_achieved = max(self.max_parallelism_achieved, len(self.processing_pages))
 
-            workflow.logger.info(f"Batch executor completed {self.num_pages_processed} pages")
+        def _get_retry_policy(self, phase: BatchOrchestrator.EnqueuedPage.Phase) -> RetryPolicy:
+            if phase == BatchOrchestrator.EnqueuedPage.Phase.INITIAL:
+                return self.input.initial_retry_policy
+            else:
+                return RetryPolicy(
+                    backoff_coefficient=1.0,
+                    initial_interval=timedelta(seconds=self.input.extended_retry_interval_seconds),
+                    non_retryable_error_types=self.input.initial_retry_policy.non_retryable_error_types
+                    )
 
 
-# convert batchPageProcessorName to a function and call it with the page
-# Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
-@activity.defn
-async def process_page(batchPageProcessorName: str, page: BatchPage, args: Optional[str]) -> Any:
-    context = await BatchProcessorContext(
-        page=page, 
-        args=args,
-        activity_info=activity.info()).async_init()
-    userProvidedActivity = page_processor_registry.get(batchPageProcessorName)
-    if not userProvidedActivity:
-        raise Exception(
-            f"You passed batch processor name {batchPageProcessorName} into the BatchOrchestrator, but it was not registered on " +
-            f"your activity worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
-            f"Available functions: {list_page_processors()}")
-    return await userProvidedActivity(context)
-    
+    #
+    # Getting signals when new pages are queued for processing
+    #
+    @workflow.signal
+    async def signal_add_page(self, page: BatchPage) -> None:
+        now = workflow.now().strftime('%H:%M:%S.%f')
 
+        workflow.logger.info(f"{now} Enqueuing page request for cursor {page.cursor_str}")
+        self.page_queue.enqueue_page(page)
+
+    @workflow.run
+    async def run(self, input: BatchOrchestratorInput) -> BatchOrchestratorResults:
+        workflow.logger.info("Starting batch executor")
+
+        self.page_queue = BatchOrchestrator.PageQueue(input)
+        self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size))
+        await self.page_queue.run()
+
+        if input.use_extended_retries and self.page_queue.failed_pages:
+            workflow.logger.info(
+                f"Moving to extended retries: {len(self.page_queue.failed_pages)} failed to process, " +
+                f"while {self.page_queue.num_pages_processed} processed successfully.")
+
+            self.page_queue.enqueue_failed_pages()
+            await self.page_queue.run()
+
+
+        workflow.logger.info(f"Batch executor completed {self.page_queue.num_pages_processed} pages")
+
+
+        return BatchOrchestratorResults(
+            num_pages_processed=self.page_queue.num_pages_processed,
+            max_parallelism_achieved=self.page_queue.max_parallelism_achieved,
+            num_failed_pages=len(self.page_queue.failed_pages))
+
+    class FailedBatchPage:
+        def __init__(self, page_num: int, page: BatchPage, did_signal_next_page: bool, exception: BaseException) -> None:
+            self.page_num = page_num
+            self.page = page
+            self.did_signal_next_page = did_signal_next_page
+            self.exception = exception
+
+class BatchOrchestratorEncodingPayloadConverter(EncodingPayloadConverter):
+    @property
+    def encoding(self) -> str:
+        return "text/batch-orchestrator-encoding"
+
+    def to_payload(self, value: Any) -> Optional[Payload]:
+        if isinstance(value, BatchOrchestratorInput):
+            dict_value = asdict(value)
+            if dict_value["initial_retry_policy"]["initial_interval"]:
+                dict_value["initial_retry_policy"]["initial_interval"] = dict_value["initial_retry_policy"]["initial_interval"].total_seconds()
+            if dict_value["initial_retry_policy"]["maximum_interval"]:
+                dict_value["initial_retry_policy"]["maximum_interval"] = dict_value["initial_retry_policy"]["maximum_interval"].total_seconds()
+
+            return Payload(
+                metadata={"encoding": self.encoding.encode()},
+                data=json.dumps(dict_value).encode(),
+            )
+        else:
+            return None
+
+    def from_payload(self, payload: Payload, type_hint: Optional[Type] = None) -> Any:
+        # TODO(drewhoskins) why is this assert not working?  And how can I ensure that this dataconverter doesn't get used for other types?
+        # assert not type_hint or type_hint is BatchOrchestratorInput
+        decoded_results = json.loads(payload.data.decode())
+        if decoded_results["initial_retry_policy"]["initial_interval"]:
+            decoded_results["initial_retry_policy"]["initial_interval"] = timedelta(seconds=decoded_results["initial_retry_policy"]["initial_interval"])
+        if decoded_results["initial_retry_policy"]["maximum_interval"]:
+            decoded_results["initial_retry_policy"]["maximum_interval"] = timedelta(seconds=decoded_results["initial_retry_policy"]["maximum_interval"])
+        decoded_results["initial_retry_policy"] = RetryPolicy(**decoded_results["initial_retry_policy"])
+        return BatchOrchestratorInput(**decoded_results)
+
+
+class BatchOrchestratorPayloadConverter(CompositePayloadConverter):
+    def __init__(self) -> None:
+        # Just add ours as first before the defaults
+        super().__init__(
+            BatchOrchestratorEncodingPayloadConverter(),
+            # TODO(drewhoskins): Update this to make use of fix for https://github.com/temporalio/sdk-python/issues/139
+            *DefaultPayloadConverter().converters.values(),
+        )
+
+# Use the default data converter, but change the payload converter.
+batch_orchestrator_data_converter = dataclasses.replace(
+    temporalio.converter.default(),
+    payload_converter_class=BatchOrchestratorPayloadConverter,
+)
