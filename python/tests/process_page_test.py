@@ -25,7 +25,7 @@ async def test_page_processor():
 @page_processor
 async def starts_new_page(context: BatchProcessorContext):
     page = context.get_page()
-    next_page = BatchPage(page.cursor_str + "_the_second", page.page_size)
+    next_page = BatchPage(page.cursor_str + "_the_second", page.size)
     await context.enqueue_next_page(next_page)
 
 async def on_signal(parent_workflow, signal: str, page):
@@ -77,7 +77,7 @@ async def fails_before_signal(context: BatchProcessorContext):
 @page_processor
 async def fails_after_signal(context: BatchProcessorContext):
     current_page = context.get_page()
-    await context.enqueue_next_page(BatchPage(current_page.cursor_str + "_the_second", current_page.page_size))
+    await context.enqueue_next_page(BatchPage(current_page.cursor_str + "_the_second", current_page.size))
     raise ValueError("I failed")
 
 @pytest.mark.asyncio
@@ -113,8 +113,8 @@ async def test_extended_retry_does_not_resignal():
 @page_processor
 async def attempts_to_signal_twice(context: BatchProcessorContext):
     current_page = context.get_page()
-    await context.enqueue_next_page(BatchPage("second_cursor", current_page.page_size))
-    await context.enqueue_next_page(BatchPage("third_cursor", current_page.page_size))
+    await context.enqueue_next_page(BatchPage("second_cursor", current_page.size))
+    await context.enqueue_next_page(BatchPage("third_cursor", current_page.size))
 
 @pytest.mark.asyncio
 async def test_cannot_enqueue_two_pages():

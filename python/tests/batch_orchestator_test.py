@@ -94,9 +94,9 @@ async def processes_n_items(context: BatchProcessorContext):
     args = MyArgs.from_json(context.get_args())
     cursor = MyCursor.from_json(page.cursor_str)
     # Simulate whether we get an incomplete page.  If not, start a new page.
-    if cursor.i + page.page_size < args.num_items_to_process - 1:
+    if cursor.i + page.size < args.num_items_to_process - 1:
         await context.enqueue_next_page(
-            BatchPage(MyCursor(cursor.i + page.page_size).to_json(), page.page_size)
+            BatchPage(MyCursor(cursor.i + page.size).to_json(), size=page.size)
         )
         print(f"Signaled the workflow {page}")
     print(f"Processing page {page}")
@@ -183,7 +183,6 @@ async def test_extended_retries(client: Client):
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one",
-            page_processor_args=MyArgs(num_items_to_process=49).to_json(),
             # extended retries should pick it up.
             initial_retry_policy=RetryPolicy(maximum_attempts=1))
         handle = await client.start_workflow(
@@ -234,7 +233,6 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one",
-            page_processor_args=MyArgs(num_items_to_process=49).to_json(),
             # one try so extended retries should pick it up immediately.
             initial_retry_policy=RetryPolicy(maximum_attempts=1))
         handle = await client.start_workflow(
@@ -251,7 +249,7 @@ async def fails_after_signal(context: BatchProcessorContext):
     did_attempt_fails_after_signal = True
     current_page = context.get_page()
     if current_page.cursor_str == "page one":
-        await context.enqueue_next_page(BatchPage("page two", current_page.page_size))
+        await context.enqueue_next_page(BatchPage("page two", current_page.size))
     if should_fail:
         raise ValueError("I failed")
 
@@ -266,7 +264,6 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
                 max_parallelism=3, 
                 page_size=10,
                 first_cursor_str="page one",
-                page_processor_args=MyArgs(num_items_to_process=49).to_json(),
                 # one try so extended retries should pick it up immediately.
                 initial_retry_policy=RetryPolicy(maximum_attempts=1))
             handle = await client.start_workflow(

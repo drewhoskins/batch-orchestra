@@ -45,13 +45,12 @@ async def inflate_product_prices(context: BatchProcessorContext):
     args = ConfigArgs.from_json(context.get_args())
     db_connection = ProductDB.get_db_connection(args.db_file)
     
-    products = ProductDB.fetch_page(db_connection, cursor.key, page.page_size)
+    products = ProductDB.fetch_page(db_connection, cursor.key, page.size)
 
-    if len(products) == page.page_size:
-        last_heartbeat = context.get_activity_info().heartbeat_details
+    if len(products) == page.size:
         # We got a full set of results, so there are likely more pages to process
         await context.enqueue_next_page(
-            BatchPage(ProductDBCursor(products[-1].key).to_json(), page.page_size)
+            BatchPage(ProductDBCursor(products[-1].key).to_json(), page.size)
         )
 
     num_processed = 0
