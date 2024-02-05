@@ -2,12 +2,14 @@ from __future__ import annotations
 from asyncio import sleep
 from dataclasses import asdict, dataclass
 import json
+from unittest.mock import patch
 import pytest
 import uuid
 
 from batch_processor import BatchPage
 from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
-from temporalio.client import Client
+from temporalio.common import RetryPolicy
+from temporalio.client import Client, WorkflowHandle
 from temporalio.worker import Worker
 from batch_processor import BatchProcessorContext, page_processor
 
@@ -142,7 +144,7 @@ async def test_page_size(client: Client):
 
 @page_processor
 async def asserts_timeout(context: BatchProcessorContext):
-    timeout = context.get_activity_info().start_to_close_timeout
+    timeout = context._activity_info.start_to_close_timeout
     assert timeout is not None
     assert timeout.seconds == 123
 
@@ -163,3 +165,115 @@ async def test_timeout(client: Client):
         )
         result = await handle.result()
         assert result.num_pages_processed == 1
+
+did_attempt_fails_once = False
+async def fails_once(context: BatchProcessorContext):
+    global did_attempt_fails_once
+    if not did_attempt_fails_once:
+        did_attempt_fails_once = True
+        raise ValueError("I failed")
+
+@pytest.mark.asyncio
+async def test_extended_retries(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_name='my_batch', 
+            page_processor=fails_before_signal.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            first_cursor_str="page one",
+            page_processor_args=MyArgs(num_items_to_process=49).to_json(),
+            # extended retries should pick it up.
+            initial_retry_policy=RetryPolicy(maximum_attempts=1))
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        assert result.num_pages_processed == 2
+
+did_attempt_fails_before_signal = False
+@page_processor
+async def fails_before_signal(context: BatchProcessorContext):
+    global did_attempt_fails_before_signal
+    should_fail = not did_attempt_fails_before_signal
+    did_attempt_fails_before_signal = True
+    if should_fail:
+        raise ValueError("I failed")
+    if context.get_page().cursor_str == "page one":
+        await context.enqueue_next_page(BatchPage("page two", 10))
+
+@page_processor
+async def signals_same_page_infinitely(context: BatchProcessorContext):
+    # The batch framework should detect this and ignore subsequent signals and terminate
+    await context.enqueue_next_page(BatchPage("the everpage", 10))
+
+@pytest.mark.asyncio
+async def test_ignores_subsequent_signals(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_name='my_batch', 
+            page_processor=signals_same_page_infinitely.__name__, 
+            max_parallelism=3,
+            page_size=10,
+            first_cursor_str="page one")
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        assert result.num_pages_processed == 2
+
+@pytest.mark.asyncio
+async def test_extended_retries_first_page_fails_before_signal(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_name='my_batch', 
+            page_processor=fails_before_signal.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            first_cursor_str="page one",
+            page_processor_args=MyArgs(num_items_to_process=49).to_json(),
+            # one try so extended retries should pick it up immediately.
+            initial_retry_policy=RetryPolicy(maximum_attempts=1))
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        assert result.num_pages_processed == 2
+
+did_attempt_fails_after_signal = False
+@page_processor
+async def fails_after_signal(context: BatchProcessorContext):
+    global did_attempt_fails_after_signal
+    should_fail = not did_attempt_fails_after_signal
+    did_attempt_fails_after_signal = True
+    current_page = context.get_page()
+    if current_page.cursor_str == "page one":
+        await context.enqueue_next_page(BatchPage("page two", current_page.page_size))
+    if should_fail:
+        raise ValueError("I failed")
+
+@pytest.mark.asyncio
+async def test_extended_retries_first_page_fails_after_signal(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        with patch.object(WorkflowHandle, 'signal') as signal_mock:
+            input = BatchOrchestratorInput(
+                batch_name='my_batch', 
+                page_processor=fails_after_signal.__name__, 
+                max_parallelism=3, 
+                page_size=10,
+                first_cursor_str="page one",
+                page_processor_args=MyArgs(num_items_to_process=49).to_json(),
+                # one try so extended retries should pick it up immediately.
+                initial_retry_policy=RetryPolicy(maximum_attempts=1))
+            handle = await client.start_workflow(
+                BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+            )
+            result = await handle.result()
+            # We should signal the orchestrator with a new page once during the initial reries.  Then when we restart the activity, 
+            # we should ferry around the context that we've already signaled and avoid signaling again.
+            assert signal_mock.call_count == 1
+            assert result.num_pages_processed == 2

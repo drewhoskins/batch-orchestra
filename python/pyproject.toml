@@ -15,6 +15,7 @@ packages = [
 # - I believe that the kw_only annotation on @dataclass is 3.10.  That can probably be easily worked around.
 python = "^3.10"
 temporalio = "^1.5.0"
+inflect = "^7.0.0"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"

@@ -1,8 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
+from enum import Enum
+
 from temporalio import activity
 from temporalio.client import Client, WorkflowHandle
+from temporalio.exceptions import ApplicationError
 
 # 
 # batch_processor library
@@ -44,17 +47,64 @@ class BatchPage:
     # When sdk-python supports generics, we can add support for (serializable) cursor types here.
     cursor_str: str
     page_size: int
+
+
+# This error is thrown any time a retryable error occurs in your page processor.  It will cause the page to be retried.
+class BatchProcessorRetryableError(Exception):
+    def __init__(self, *, did_signal_next_page: bool) -> None:
+        self.did_signal_next_page = did_signal_next_page
+
+
+# convert batchPageProcessorName to a function and call it with the page
+# Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
+@activity.defn
+async def process_page(batch_page_processor_name: str, page: BatchPage, args: Optional[str], did_signal_next_page: bool) -> Any:
+    context = await BatchProcessorContext(
+        page=page, 
+        args=args,
+        activity_info=activity.info(),
+        did_signal_next_page=did_signal_next_page).async_init()
+    userProvidedActivity = page_processor_registry.get(batch_page_processor_name)
+    if not userProvidedActivity:
+        raise Exception(
+            f"You passed batch processor name {batch_page_processor_name} into the BatchOrchestrator, but it was not registered on " +
+            f"your activity worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
+            f"Available functions: {list_page_processors()}")
+    try:
+        return await userProvidedActivity(context)
+    except Exception as e:
+        did_signal_next_page = context._did_signal_next_page()
+        raise ApplicationError(
+            f"An error occurred in page_processor {batch_page_processor_name} which is being wrapped for bookkeeping purposes.  Look at the cause.",
+            "did_signal_next_page" if did_signal_next_page else "did_not_signal_next_page",
+            ) from e
+    
     
 # This class is the only argument passed to your page processor function but contains everything you need.
 class BatchProcessorContext:
-    def __init__(self, *, page: BatchPage, args: Optional[str], activity_info: temporalio.activity.Info):
+
+    class NextPageSignaled(Enum):
+        NOT_SIGNALED = 0
+        INITIAL_PHASE = 1
+        THIS_RUN = 2
+        PREVIOUS_RUN = 3
+
+    def __init__(self, *, page: BatchPage, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
         self._page = page
         self._activity_info = activity_info
         self._args = args
         self._workflow_client: Optional[Client] = None
         self._parent_workflow: Optional[WorkflowHandle] = None
+        print (f"Wakka {did_signal_next_page}")
+        if did_signal_next_page:
+            self._next_page_signaled = BatchProcessorContext.NextPageSignaled.INITIAL_PHASE
+        elif "signaled_next_page" in activity.info().heartbeat_details:
+            self._next_page_signaled = BatchProcessorContext.NextPageSignaled.PREVIOUS_RUN
+        else:
+            self._next_page_signaled = BatchProcessorContext.NextPageSignaled.NOT_SIGNALED 
 
     async def async_init(self)-> BatchProcessorContext:
+        # TODO add data converter just in case
         self._workflow_client = await Client.connect("localhost:7233")
         self._parent_workflow = self._workflow_client.get_workflow_handle(
             self._activity_info.workflow_id, run_id = self._activity_info.workflow_run_id)
@@ -72,25 +122,29 @@ class BatchProcessorContext:
         if result is None:
             raise ValueError("You cannot use get_args because you did not pass any args into BatchOrchestratorInput.page_processor_args")
         return result 
+
+    def _did_signal_next_page(self) -> bool:
+        return self._next_page_signaled != BatchProcessorContext.NextPageSignaled.NOT_SIGNALED
     
     # Call this with your next cursor before you process the page to enqueue the next chunk on the BatchOrchestator.
-    async def enqueue_next_page(self, page) -> None:
+    async def enqueue_next_page(self, page: BatchPage) -> None:
         assert self._parent_workflow is not None, \
             ("BatchProcessorContext.async_init() was never called.  This class should only be " +
             "instantiated by the temporal-batch library.")
-        heartbeat_details = activity.info().heartbeat_details
-        # Minimize the chance of a re-signal when the activity fails and retries, by checking if we recorded that we already signaled.
-        if "signaled_next_page" in heartbeat_details:
-            return
+        assert self._next_page_signaled != BatchProcessorContext.NextPageSignaled.THIS_RUN, \
+            ("You cannot call enqueue_next_page twice in the same page_processor.  Each processed page " +
+             "is responsible for enqueuing the following page.")
 
+        # Minimize the chance of a re-signal when the activity fails and retries, by checking if we recorded that we already signaled.
+        if self._did_signal_next_page():
+            return
+        
+        print(f"Signaling page '{page.cursor_str}'")
         await self._parent_workflow.signal(
             'signal_add_page', # use string instead of literal to avoid upward dependency between this file and batch_orchestrator.py
             page
         )
+
+        self._next_page_signaled = BatchProcessorContext.NextPageSignaled.THIS_RUN
         activity.heartbeat("signaled_next_page")
     
-    # Advanced: use this for low-level access to details about the temporal activity in which your page processor runs, such as 
-    # for adding heartbeats to your activity.
-    def get_activity_info(self) -> temporalio.activity.Info:
-        return self._activity_info
-
