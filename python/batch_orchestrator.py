@@ -92,8 +92,10 @@ class BatchOrchestrator:
     @dataclass(kw_only=True)
     class EnqueuedPage:
         class Phase(Enum):
-            INITIAL = 1
+            PENDING = 0
+            PROCESSING = 1
             EXTENDED_RETRIES = 2
+            COMPLETED = 3
         page: BatchPage
         phase: Phase
         page_num: int
@@ -106,22 +108,27 @@ class BatchOrchestrator:
             self.input = input
             self.num_pages_enqueued = 0
             self.num_pages_processed: int = 0
+            self.pages: Dict[int, BatchOrchestrator.EnqueuedPage] = {}
             self.processing_pages: Dict[str, Future[str]] = {}
-            self.pending_pages: List[BatchOrchestrator.EnqueuedPage] = []
             self.pages_processed: Set[str] = set()
             self.max_parallelism_achieved: int = 0
-            self.failed_pages: List[BatchOrchestrator.EnqueuedPage] = []
+            self.pending_pages: List[int] = []
+            self.failed_pages: List[int] = []
 
         # Receiving new work
         def enqueue_page(self, page: BatchPage) -> None:
-            self.pending_pages.append(
-                BatchOrchestrator.EnqueuedPage(
-                    page=page, 
-                    phase=BatchOrchestrator.EnqueuedPage.Phase.INITIAL, 
-                    page_num=self.num_pages_enqueued))
+            page_num = self.num_pages_enqueued
+            self.pages[page_num] = BatchOrchestrator.EnqueuedPage(
+                page=page,
+                phase=BatchOrchestrator.EnqueuedPage.Phase.PENDING,
+                page_num=page_num)
+            self.pending_pages.append(page_num)
             self.num_pages_enqueued += 1
             
         def enqueue_failed_pages(self) -> None:
+            for page_num in self.failed_pages:
+                self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.PENDING
+
             self.pending_pages = self.failed_pages
             self.failed_pages = []
 
@@ -138,11 +145,8 @@ class BatchOrchestrator:
         def on_page_processed(self, future: Future[str], page_num: int, page: BatchPage) -> None:
             exception = future.exception()
             ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
-
+            workflow.logger.info(f"Finished processing page {page_num}.  Exception {exception}")
             if exception is not None:
-                print("Before")
-                print_exception_chain(exception)
-                print("After")
                 assert isinstance(exception, ActivityError)
                 exception = exception.__cause__
                 if isinstance(exception, ApplicationError):
@@ -157,18 +161,17 @@ class BatchOrchestrator:
                     workflow.logger.info(f"Batch executor failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}")
 
                     assert cause is not None
-                    self.failed_pages.append(
-                        BatchOrchestrator.EnqueuedPage(
-                            page=page,
-                            phase=BatchOrchestrator.EnqueuedPage.Phase.EXTENDED_RETRIES,
-                            page_num=page_num,
-                            did_signal_next_page=did_signal_next_page,
-                            last_exception=cause
-                        ))
+                    self.failed_pages.append(page_num)
+                    assert self.pages[page_num].phase == BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
+                    self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.EXTENDED_RETRIES
+                    self.pages[page_num].last_exception = cause
+                else:
+                    workflow.logger.error(f"Huh?  Got an exception that wasn't an ApplicationError: {exception}")
             else:
                 workflow.logger.info(f"Batch executor completed {page.cursor_str}, the {ordinal} page")
                 self.num_pages_processed += 1
                 self.pages_processed.add(page.cursor_str)
+                self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.COMPLETED
             self.processing_pages.pop(page.cursor_str)
 
         # Initiate processing the page and register a callback to record that it finished
@@ -180,6 +183,7 @@ class BatchOrchestrator:
                 # This should be very rare since we heartbeat within page processor to cause the activity not to re-send the signal.
                 workflow.logger.warning(f"Got signaled for page '{page.cursor_str}', but skipping because it was already signaled for.")
                 return
+            self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
             self.processing_pages[cursor_str] = workflow.start_activity(
                 process_page, 
                 args=[self.input.page_processor, page, self.input.page_processor_args, enqueued_page.did_signal_next_page], 
@@ -200,20 +204,22 @@ class BatchOrchestrator:
                 await workflow.wait_condition(
                     lambda: self.is_new_page_ready() or self.work_is_complete())
                 if self.is_new_page_ready():
-                    next_page = self.pending_pages.pop()
-                    self.start_page_processor_activity(next_page)
+                    next_page_num = self.pending_pages.pop()
+                    self.start_page_processor_activity(self.pages[next_page_num])
                 self.max_parallelism_achieved = max(self.max_parallelism_achieved, len(self.processing_pages))
 
         def _get_retry_policy(self, phase: BatchOrchestrator.EnqueuedPage.Phase) -> RetryPolicy:
-            if phase == BatchOrchestrator.EnqueuedPage.Phase.INITIAL:
-                return self.input.initial_retry_policy
-            else:
-                return RetryPolicy(
-                    backoff_coefficient=1.0,
-                    initial_interval=timedelta(seconds=self.input.extended_retry_interval_seconds),
-                    non_retryable_error_types=self.input.initial_retry_policy.non_retryable_error_types
-                    )
-
+            match phase:
+                case BatchOrchestrator.EnqueuedPage.Phase.PROCESSING:
+                    workflow.logger.info(f"Retry policy: {self.input.initial_retry_policy}")
+                    return self.input.initial_retry_policy
+                case BatchOrchestrator.EnqueuedPage.Phase.EXTENDED_RETRIES:
+                    return RetryPolicy(
+                        backoff_coefficient=1.0,
+                        initial_interval=timedelta(seconds=self.input.extended_retry_interval_seconds),
+                        non_retryable_error_types=self.input.initial_retry_policy.non_retryable_error_types
+                        )
+                case _: assert False, f"Unexpected phase {phase}"
 
     #
     # Getting signals when new pages are queued for processing
@@ -233,6 +239,7 @@ class BatchOrchestrator:
         self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size))
         await self.page_queue.run()
 
+        print(f"{self.page_queue.failed_pages} failed pages")
         if input.use_extended_retries and self.page_queue.failed_pages:
             workflow.logger.info(
                 f"Moving to extended retries: {len(self.page_queue.failed_pages)} failed to process, " +
