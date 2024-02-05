@@ -14,8 +14,9 @@ class BatchPage:
     page_size: int
     
 class BatchProcessorContext:
-    def __init__(self, *, page: BatchPage, args: Optional[str], activity_info: temporalio.activity.Info):
+    def __init__(self, *, page: BatchPage, page_num: int, args: Optional[str], activity_info: temporalio.activity.Info):
         self.page = page
+        self.page_num = page_num
         self.activity_info = activity_info
         self.args = args
         self.workflow_client: Optional[Client] = None
@@ -29,6 +30,10 @@ class BatchProcessorContext:
 
     def get_page(self) -> BatchPage:
         return self.page
+    
+    # The overall index of the page within the batch job.  The first page is 0.
+    def get_page_num(self) -> int:
+        return self.page_num    
 
     # Gets user-provided args passed in BatchOrchestratorInput.page_processor_args
     def get_args(self) -> str:

@@ -50,18 +50,13 @@ class BatchPage:
     size: int
 
 
-# This error is thrown any time a retryable error occurs in your page processor.  It will cause the page to be retried.
-class BatchProcessorRetryableError(Exception):
-    def __init__(self, *, did_signal_next_page: bool) -> None:
-        self.did_signal_next_page = did_signal_next_page
-
-
 # convert batchPageProcessorName to a function and call it with the page
 # Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
 @activity.defn
-async def process_page(batch_page_processor_name: str, page: BatchPage, args: Optional[str], did_signal_next_page: bool) -> Any:
+async def process_page(batch_page_processor_name: str, page: BatchPage, page_num: int, args: Optional[str], did_signal_next_page: bool) -> Any:
     context = await BatchProcessorContext(
-        page=page, 
+        page=page,
+        page_num=page_num,
         args=args,
         activity_info=activity.info(),
         did_signal_next_page=did_signal_next_page).async_init()
@@ -90,13 +85,13 @@ class BatchProcessorContext:
         THIS_RUN = 2
         PREVIOUS_RUN = 3
 
-    def __init__(self, *, page: BatchPage, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
+    def __init__(self, *, page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
         self._page = page
+        self._page_num = page_num
         self._activity_info = activity_info
         self._args = args
         self._workflow_client: Optional[Client] = None
         self._parent_workflow: Optional[WorkflowHandle] = None
-        print (f"Wakka {did_signal_next_page}")
         if did_signal_next_page:
             self._next_page_signaled = BatchProcessorContext.NextPageSignaled.INITIAL_PHASE
         elif "signaled_next_page" in activity.info().heartbeat_details:
@@ -143,7 +138,7 @@ class BatchProcessorContext:
         print(f"Signaling page '{page.cursor_str}'")
         await self._parent_workflow.signal(
             'signal_add_page', # use string instead of literal to avoid upward dependency between this file and batch_orchestrator.py
-            page
+            args=[page, self._page_num + 1]
         )
 
         self._next_page_signaled = BatchProcessorContext.NextPageSignaled.THIS_RUN

@@ -22,7 +22,7 @@ from temporalio.converter import (
 )
 
 from batch_processor import list_page_processors, page_processor_registry
-from batch_processor import BatchPage, BatchProcessorRetryableError, process_page
+from batch_processor import BatchPage, process_page
 
 
 #
@@ -109,15 +109,28 @@ class BatchOrchestrator:
             self.num_pages_enqueued = 0
             self.num_pages_processed: int = 0
             self.pages: Dict[int, BatchOrchestrator.EnqueuedPage] = {}
-            self.processing_pages: Dict[str, Future[str]] = {}
-            self.pages_processed: Set[str] = set()
+            self.processing_pages: Dict[int, Future[str]] = {}
             self.max_parallelism_achieved: int = 0
             self.pending_pages: List[int] = []
             self.failed_pages: List[int] = []
 
         # Receiving new work
-        def enqueue_page(self, page: BatchPage) -> None:
-            page_num = self.num_pages_enqueued
+        def enqueue_page(self, page: BatchPage, page_num: int) -> None:
+            if page_num < self.num_pages_enqueued:
+                ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
+                workflow.logger.warning(
+                    f"Got re-signaled for the {ordinal} page, but skipping because it was already signaled for. This should be rare, " +
+                    "so please report an issue if it persists.",
+                    {"old_cursor": self.pages[page_num].page.cursor_str, "new_cursor": page.cursor_str, page_num: page_num})
+                return
+            duplicate = next((enqueued_page for enqueued_page in self.pages.values() if enqueued_page.page.cursor_str == page.cursor_str), None)
+            if duplicate:
+                workflow.logger.warning(
+                    f"Got re-signaled for the page with cursor {page.cursor_str}, but skipping because it was already signaled for. While it's possible " +
+                    "for duplicate signals to be sent, it's rare.  Did you mis-compute your next cursor?",
+                    {"old_page_num": duplicate.page_num, "new_page_num": page_num, "cursor": page.cursor_str})
+                return
+
             self.pages[page_num] = BatchOrchestrator.EnqueuedPage(
                 page=page,
                 phase=BatchOrchestrator.EnqueuedPage.Phase.PENDING,
@@ -170,27 +183,22 @@ class BatchOrchestrator:
             else:
                 workflow.logger.info(f"Batch executor completed {page.cursor_str}, the {ordinal} page")
                 self.num_pages_processed += 1
-                self.pages_processed.add(page.cursor_str)
                 self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.COMPLETED
-            self.processing_pages.pop(page.cursor_str)
+            self.processing_pages.pop(page_num)
 
         # Initiate processing the page and register a callback to record that it finished
         def start_page_processor_activity(self, enqueued_page: BatchOrchestrator.EnqueuedPage) -> None:
             page = enqueued_page.page
             page_num = enqueued_page.page_num
             cursor_str = page.cursor_str
-            if cursor_str in self.pages_processed or cursor_str in self.processing_pages:
-                # This should be very rare since we heartbeat within page processor to cause the activity not to re-send the signal.
-                workflow.logger.warning(f"Got signaled for page '{page.cursor_str}', but skipping because it was already signaled for.")
-                return
             self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
-            self.processing_pages[cursor_str] = workflow.start_activity(
+            self.processing_pages[page_num] = workflow.start_activity(
                 process_page, 
-                args=[self.input.page_processor, page, self.input.page_processor_args, enqueued_page.did_signal_next_page], 
+                args=[self.input.page_processor, page, page_num, self.input.page_processor_args, enqueued_page.did_signal_next_page], 
                 start_to_close_timeout=timedelta(seconds=self.input.page_timeout_seconds),
                 retry_policy=self._get_retry_policy(enqueued_page.phase)
                 )
-            self.processing_pages[cursor_str].add_done_callback(
+            self.processing_pages[page_num].add_done_callback(
                 lambda future: self.on_page_processed(future, page_num, page))
 
         #
@@ -225,18 +233,18 @@ class BatchOrchestrator:
     # Getting signals when new pages are queued for processing
     #
     @workflow.signal
-    async def signal_add_page(self, page: BatchPage) -> None:
+    async def signal_add_page(self, page: BatchPage, page_num: int) -> None:
         now = workflow.now().strftime('%H:%M:%S.%f')
 
         workflow.logger.info(f"{now} Enqueuing page request for cursor {page.cursor_str}")
-        self.page_queue.enqueue_page(page)
+        self.page_queue.enqueue_page(page, page_num)
 
     @workflow.run
     async def run(self, input: BatchOrchestratorInput) -> BatchOrchestratorResults:
         workflow.logger.info("Starting batch executor")
 
         self.page_queue = BatchOrchestrator.PageQueue(input)
-        self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size))
+        self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
         await self.page_queue.run()
 
         print(f"{self.page_queue.failed_pages} failed pages")
