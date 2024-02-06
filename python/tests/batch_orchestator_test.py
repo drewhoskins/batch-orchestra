@@ -250,27 +250,35 @@ async def fails_after_signal(context: BatchProcessorContext):
     current_page = context.get_page()
     if current_page.cursor_str == "page one":
         await context.enqueue_next_page(BatchPage("page two", current_page.size))
+    await sleep(0.1)
     if should_fail:
         raise ValueError("I failed")
+
+def count_calls(func):
+    def wrapper(*args, **kwargs):
+        wrapper.calls += 1
+        return func(*args, **kwargs)
+    wrapper.calls = 0
+    return wrapper
 
 @pytest.mark.asyncio
 async def test_extended_retries_first_page_fails_after_signal(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
-        with patch.object(WorkflowHandle, 'signal') as signal_mock:
-            input = BatchOrchestratorInput(
-                batch_name='my_batch', 
-                page_processor=fails_after_signal.__name__, 
-                max_parallelism=3, 
-                page_size=10,
-                first_cursor_str="page one",
-                # one try so extended retries should pick it up immediately.
-                initial_retry_policy=RetryPolicy(maximum_attempts=1))
-            handle = await client.start_workflow(
-                BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-            )
-            result = await handle.result()
-            # We should signal the orchestrator with a new page once during the initial reries.  Then when we restart the activity, 
-            # we should ferry around the context that we've already signaled and avoid signaling again.
-            assert signal_mock.call_count == 1
-            assert result.num_pages_processed == 2
+        WorkflowHandle.signal = count_calls(WorkflowHandle.signal)
+        input = BatchOrchestratorInput(
+            batch_name='my_batch', 
+            page_processor=fails_after_signal.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            first_cursor_str="page one",
+            # one try so extended retries should pick it up immediately.
+            initial_retry_policy=RetryPolicy(maximum_attempts=1))
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        # We signal the orchestrator with a new page once during the initial retries.  Then when we restart the activity, 
+        # we will use that info avoid signaling again.
+        assert WorkflowHandle.signal.calls == 1
+        assert result.num_pages_processed == 2

@@ -66,14 +66,7 @@ async def process_page(batch_page_processor_name: str, page: BatchPage, page_num
             f"You passed batch processor name {batch_page_processor_name} into the BatchOrchestrator, but it was not registered on " +
             f"your activity worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
             f"Available functions: {list_page_processors()}")
-    try:
-        return await userProvidedActivity(context)
-    except Exception as e:
-        did_signal_next_page = context._did_signal_next_page()
-        raise ApplicationError(
-            f"An error occurred in page_processor {batch_page_processor_name} which is being wrapped for bookkeeping purposes.  Look at the cause.",
-            "did_signal_next_page" if did_signal_next_page else "did_not_signal_next_page",
-            ) from e
+    return await userProvidedActivity(context)
     
     
 # This class is the only argument passed to your page processor function but contains everything you need.
@@ -98,6 +91,10 @@ class BatchProcessorContext:
             self._next_page_signaled = BatchProcessorContext.NextPageSignaled.PREVIOUS_RUN
         else:
             self._next_page_signaled = BatchProcessorContext.NextPageSignaled.NOT_SIGNALED 
+
+    # Prints to the Worker's logs.  If you are developing locally and want to see the logs, run the Worker in the foreground and with debug_mode=True.
+    def logger(self):
+        return activity.logger
 
     async def async_init(self)-> BatchProcessorContext:
         # TODO add data converter just in case

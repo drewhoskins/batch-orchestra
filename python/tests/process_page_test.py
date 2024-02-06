@@ -9,6 +9,7 @@ from temporalio.client import WorkflowHandle
 from temporalio.testing import ActivityEnvironment
 from temporalio.activity import info
 import temporalio.common
+import temporalio.exceptions
 
 import batch_orchestrator
 from batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page
@@ -82,38 +83,6 @@ async def test_idempotency():
         
             signal_mock.assert_not_called()
 
-@page_processor
-async def fails_before_signal(context: BatchProcessorContext):
-    raise ValueError("I failed")
-
-@page_processor
-async def fails_after_signal(context: BatchProcessorContext):
-    current_page = context.get_page()
-    await context.enqueue_next_page(BatchPage(current_page.cursor_str + "_the_second", current_page.size))
-    raise ValueError("I failed")
-
-@pytest.mark.asyncio
-async def test_pre_signal_failure():
-    env = ActivityEnvironment()
-    try:
-        result = await env.run(process_page, fails_before_signal.__name__, BatchPage("some_cursor", 10), 0, "some_args", False)
-    except BatchProcessorRetryableError as e:
-        assert not e.did_signal_next_page
-    else:
-        assert False
-
-@pytest.mark.asyncio
-async def test_post_signal_failure():
-    with patch.object(WorkflowHandle, 'signal', new=on_signal) as signal_mock:
-        env = ActivityEnvironment()
-
-        # try:
-        result = await env.run(process_page, fails_after_signal.__name__, BatchPage("some_cursor", 10), 0, "some_args", False)
-        # except BatchProcessorRetryableError as e:
-        #     assert e.did_signal_next_page
-        # else:
-        #     assert False
-
 @pytest.mark.asyncio
 async def test_extended_retry_does_not_resignal():
     with patch.object(WorkflowHandle, 'signal') as signal_mock:
@@ -135,9 +104,8 @@ async def test_cannot_enqueue_two_pages():
         try:
             # Pass in that we already signaled, so when the activity enqueues the new page, we ignore it.
             result = await env.run(process_page, attempts_to_signal_twice.__name__, BatchPage("first_cursor", 10), 0, "some_args", False)
-        except BatchProcessorRetryableError as e:
-            assert type(e.__cause__) == AssertionError
-            assert str(e.__cause__) == ("You cannot call enqueue_next_page twice in the same page_processor.  Each processed page " +
+        except AssertionError as e:
+            assert str(e) == ("You cannot call enqueue_next_page twice in the same page_processor.  Each processed page " +
               "is responsible for enqueuing the following page.")
         else: 
             raise ValueError("Should have received a BatchProcessorRetryableError exception which wraps the assertion.")

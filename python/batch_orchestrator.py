@@ -158,28 +158,25 @@ class BatchOrchestrator:
         def on_page_processed(self, future: Future[str], page_num: int, page: BatchPage) -> None:
             exception = future.exception()
             ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
-            workflow.logger.info(f"Finished processing page {page_num}.  Exception {exception}")
+            workflow.logger.info(f"Finished processing the {ordinal} page.  Exception {exception}")
             if exception is not None:
                 assert isinstance(exception, ActivityError)
                 exception = exception.__cause__
-                if isinstance(exception, ApplicationError):
-                    did_signal_next_page = "did_signal_next_page" in exception.details
-                    if not did_signal_next_page and not "did_not_signal_next_page" in exception.details:
-                        raise NotImplementedError(f"Non-retryable errors are not yet supported: got {type(exception)}")
-                    cause = exception.__cause__
-                    if did_signal_next_page:
-                        signaled_text = "It signaled for more work before the failure"
-                    else:
-                        signaled_text = "It did not signal for more work before the failure"
-                    workflow.logger.info(f"Batch executor failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}")
-
-                    assert cause is not None
-                    self.failed_pages.append(page_num)
-                    assert self.pages[page_num].phase == BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
-                    self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.EXTENDED_RETRIES
-                    self.pages[page_num].last_exception = cause
+                # If the page told us about its successor, we need to tell the page processor not to re-signal when it
+                # is processed within the extended retries phase.  This will avoid extra signals filling up the workflow history.
+                print(f"Did signal next page: {self.pages}, {page_num + 1}")
+                did_signal_next_page = (page_num + 1) in self.pages
+                if did_signal_next_page:
+                    signaled_text = "It signaled for more work before the failure"
                 else:
-                    workflow.logger.error(f"Huh?  Got an exception that wasn't an ApplicationError: {exception}")
+                    signaled_text = "It did not signal for more work before the failure and may be blocking further progress."
+                workflow.logger.info(f"Batch executor failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}")
+
+                assert self.pages[page_num].phase == BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
+                self.failed_pages.append(page_num)
+                self.pages[page_num].phase = BatchOrchestrator.EnqueuedPage.Phase.EXTENDED_RETRIES
+                self.pages[page_num].did_signal_next_page = did_signal_next_page
+                self.pages[page_num].last_exception = exception
             else:
                 workflow.logger.info(f"Batch executor completed {page.cursor_str}, the {ordinal} page")
                 self.num_pages_processed += 1

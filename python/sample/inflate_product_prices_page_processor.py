@@ -62,6 +62,6 @@ async def inflate_product_prices(context: BatchProcessorContext):
         # Allows the worker to context-switch, showing off parallelism when testing on systems with fewer cores.
 
     next_page_message = f"Next page cursor = {products[-1].key}" if products else "And that's all, folks!"
-    print(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
+    context.logger().info(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
     sys.stdout.flush()
     
