@@ -11,6 +11,7 @@ from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, proces
 from temporalio.common import RetryPolicy
 from temporalio.client import Client, WorkflowHandle
 from temporalio.worker import Worker
+from temporalio.exceptions import ApplicationError
 from batch_processor import BatchProcessorContext, page_processor
 
 @dataclass
@@ -48,6 +49,8 @@ def batch_worker(client: Client, task_queue_name: str):
         task_queue=task_queue_name,
         workflows=[BatchOrchestrator],
         activities=[process_page],
+        # So people can add breakpoints to the workflow without it timing out.
+        debug_mode=True
     )
 
 @pytest.mark.asyncio
@@ -179,7 +182,7 @@ async def test_extended_retries(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             batch_name='my_batch', 
-            page_processor=fails_before_signal.__name__, 
+            page_processor=fails_once.__name__, 
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one",
@@ -190,17 +193,6 @@ async def test_extended_retries(client: Client):
         )
         result = await handle.result()
         assert result.num_pages_processed == 2
-
-did_attempt_fails_before_signal = False
-@page_processor
-async def fails_before_signal(context: BatchProcessorContext):
-    global did_attempt_fails_before_signal
-    should_fail = not did_attempt_fails_before_signal
-    did_attempt_fails_before_signal = True
-    if should_fail:
-        raise ValueError("I failed")
-    if context.get_page().cursor_str == "page one":
-        await context.enqueue_next_page(BatchPage("page two", 10))
 
 @page_processor
 async def signals_same_page_infinitely(context: BatchProcessorContext):
@@ -222,6 +214,17 @@ async def test_ignores_subsequent_signals(client: Client):
         )
         result = await handle.result()
         assert result.num_pages_processed == 2
+
+did_attempt_fails_before_signal = False
+@page_processor
+async def fails_before_signal(context: BatchProcessorContext):
+    global did_attempt_fails_before_signal
+    should_fail = not did_attempt_fails_before_signal
+    did_attempt_fails_before_signal = True
+    if should_fail:
+        raise ValueError("I failed")
+    if context.get_page().cursor_str == "page one":
+        await context.enqueue_next_page(BatchPage("page two", 10))
 
 @pytest.mark.asyncio
 async def test_extended_retries_first_page_fails_before_signal(client: Client):
@@ -282,3 +285,57 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
         # we will use that info avoid signaling again.
         assert WorkflowHandle.signal.calls == 1
         assert result.num_pages_processed == 2
+
+class SomeNonRetryableException(Exception):
+    pass
+
+@count_calls
+def mock_me():
+    pass
+
+@page_processor
+async def fails_with_non_retryable_exception(context: BatchProcessorContext):
+    mock_me()
+    raise SomeNonRetryableException("I failed, please don't retry.")
+
+@pytest.mark.asyncio
+async def test_non_retryable_exceptions(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_name='my_batch', 
+            page_processor=fails_with_non_retryable_exception.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            first_cursor_str="page one",
+            initial_retry_policy=RetryPolicy(non_retryable_error_types=['SomeNonRetryableException']))
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        assert mock_me.calls == 1
+        assert result.num_pages_processed == 0
+        assert result.num_failed_pages == 1
+
+@page_processor
+async def fails_with_non_retryable_application_error(context: BatchProcessorContext):
+    mock_me()
+    raise ApplicationError("I failed, please don't retry.", non_retryable=True)
+
+@pytest.mark.asyncio
+async def test_non_retryable_application_error(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_name='my_batch', 
+            page_processor=fails_with_non_retryable_application_error.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            first_cursor_str="page one")
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        assert mock_me.calls == 1
+        assert result.num_pages_processed == 0
+        assert result.num_failed_pages == 1
