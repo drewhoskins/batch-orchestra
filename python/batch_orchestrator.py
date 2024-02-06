@@ -78,19 +78,74 @@ class BatchOrchestrator:
 
     class PageQueue:
 
+        # Indexes and counts for the pages we're managing
+        class PageTracker:
+            def __init__(self) -> None:
+                self._num_pages_ever_enqueued: int = 0
+                self._num_pages_processed: int = 0
+
+                # TODO: use sets
+                self._pending_page_nums: List[int] = []
+                self._processing_page_nums: List[int] = []
+                self._failed_page_nums: List[int] = []
+
+            @property
+            def num_pages_ever_enqueued(self) -> int:
+                return self._num_pages_ever_enqueued
+
+            @property
+            def num_pages_processed(self) -> int:
+                return self._num_pages_processed
+
+            @property
+            def failed_page_nums(self) -> List[int]:
+                return self._failed_page_nums.copy()
+
+            @property
+            def has_processing_pages(self) -> bool:
+                return bool(self._processing_page_nums) 
+
+            @property
+            def has_pending_pages(self) -> bool:
+                return bool(self._pending_page_nums)
+            
+            @property
+            def num_processing_pages(self) -> int:
+                return len(self._processing_page_nums)
+            
+            def get_next_page_num(self) -> int:
+                assert self._pending_page_nums
+                return self._pending_page_nums[0]
+
+            def enqueue_page(self, page_num: int) -> None:
+                if page_num in self._failed_page_nums:
+                    self._failed_page_nums.remove(page_num)
+                else:
+                    self._num_pages_ever_enqueued += 1
+                self._pending_page_nums.append(page_num)
+
+            def on_page_started(self, page_num: int) -> None:
+                assert page_num in self._pending_page_nums
+                self._pending_page_nums.remove(page_num)
+                self._processing_page_nums.append(page_num)
+
+            def on_page_completed(self, page_num: int) -> None:
+                self._num_pages_processed += 1
+                self._processing_page_nums.remove(page_num)
+
+            def on_page_failed(self, page_num: int) -> None:
+                self._failed_page_nums.append(page_num)
+                self._processing_page_nums.remove(page_num)
+            
         def __init__(self, input: BatchOrchestratorInput) -> None:
             self.input = input
-            self.num_pages_enqueued = 0
-            self.num_pages_processed: int = 0
+            self.tracker = BatchOrchestrator.PageQueue.PageTracker()
             self.pages: Dict[int, BatchOrchestrator.EnqueuedPage] = {}
             self.max_parallelism_achieved: int = 0
-            self.pending_page_nums: List[int] = []
-            self.processing_page_nums: List[int] = []
-            self.failed_page_nums: List[int] = []
 
         # Receiving new work
         def enqueue_page(self, page: BatchPage, page_num: int) -> None:
-            if page_num < self.num_pages_enqueued:
+            if page_num < self.tracker.num_pages_ever_enqueued:
                 ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
                 workflow.logger.warning(
                     f"Got re-signaled for the {ordinal} page, but skipping because it was already signaled for. This should be rare, " +
@@ -109,25 +164,22 @@ class BatchOrchestrator:
                 page=page,
                 phase=BatchOrchestrator.EnqueuedPage.Phase.PENDING,
                 page_num=page_num)
-            self.pending_page_nums.append(page_num)
-            self.num_pages_enqueued += 1
+            self.tracker.enqueue_page(page_num)
             
         def enqueue_failed_pages(self) -> None:
-            for page_num in self.failed_page_nums:
+            for page_num in self.tracker.failed_page_nums:
                 self.pages[page_num].set_pending()
-
-            self.pending_page_nums = self.failed_page_nums
-            self.failed_page_nums = []
+                self.tracker.enqueue_page(page_num)
 
         #
         # Page management
         #   
             
         def work_is_complete(self) -> bool:
-            return not self.pending_page_nums and not self.processing_page_nums
+            return not self.tracker.has_pending_pages and not self.tracker.has_processing_pages
         
         def is_new_page_ready(self) -> bool:
-            return len(self.processing_page_nums) < self.input.max_parallelism and len(self.pending_page_nums) > 0
+            return self.tracker.num_processing_pages < self.input.max_parallelism and self.tracker.has_pending_pages > 0
 
         def on_page_processed(self, future: Future[str], page_num: int, page: BatchPage) -> None:
             exception = future.exception()
@@ -148,13 +200,13 @@ class BatchOrchestrator:
                 workflow.logger.info(f"Batch executor failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}")
 
                 assert self.pages[page_num].phase == BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
-                self.failed_page_nums.append(page_num)
+                self.tracker.on_page_failed(page_num)
                 self.pages[page_num].set_processing_failed_initially(exception, did_signal_next_page)
             else:
                 workflow.logger.info(f"Batch executor completed {page.cursor_str}, the {ordinal} page")
-                self.num_pages_processed += 1
                 self.pages[page_num].set_processing_finished()
-            self.processing_page_nums.remove(page_num)
+                self.tracker.on_page_completed(page_num)
+
 
         # Initiate processing the page and register a callback to record that it finished
         def start_page_processor_activity(self, enqueued_page: BatchOrchestrator.EnqueuedPage) -> None:
@@ -170,7 +222,7 @@ class BatchOrchestrator:
             future.add_done_callback(
                 lambda future: self.on_page_processed(future, page_num, page))
             enqueued_page.set_processing_started(future)
-            self.processing_page_nums.append(page_num)
+            self.tracker.on_page_started(page_num)
 
         #
         # Main algorithm
@@ -183,9 +235,8 @@ class BatchOrchestrator:
                 await workflow.wait_condition(
                     lambda: self.is_new_page_ready() or self.work_is_complete())
                 if self.is_new_page_ready():
-                    next_page_num = self.pending_page_nums.pop()
-                    self.start_page_processor_activity(self.pages[next_page_num])
-                self.max_parallelism_achieved = max(self.max_parallelism_achieved, len(self.processing_page_nums))
+                    self.start_page_processor_activity(self.pages[self.tracker.get_next_page_num()])
+                self.max_parallelism_achieved = max(self.max_parallelism_achieved, self.tracker.num_processing_pages)
 
         def _get_retry_policy(self, is_extended_retries: bool) -> RetryPolicy:
             if is_extended_retries:
@@ -215,23 +266,22 @@ class BatchOrchestrator:
         self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
         await self.page_queue.run()
 
-        print(f"{self.page_queue.failed_page_nums} failed pages")
-        if input.use_extended_retries and self.page_queue.failed_page_nums:
+        if input.use_extended_retries and self.page_queue.tracker.failed_page_nums:
             workflow.logger.info(
-                f"Moving to extended retries: {len(self.page_queue.failed_page_nums)} failed to process, " +
-                f"while {self.page_queue.num_pages_processed} processed successfully.")
+                f"Moving to extended retries: {len(self.page_queue.tracker.failed_page_nums)} failed to process, " +
+                f"while {self.page_queue.tracker.num_pages_processed} processed successfully.")
 
             self.page_queue.enqueue_failed_pages()
             await self.page_queue.run()
 
 
-        workflow.logger.info(f"Batch executor completed {self.page_queue.num_pages_processed} pages")
+        workflow.logger.info(f"Batch executor completed {self.page_queue.tracker.num_pages_processed} pages")
 
 
         return BatchOrchestratorResults(
-            num_pages_processed=self.page_queue.num_pages_processed,
+            num_pages_processed=self.page_queue.tracker.num_pages_processed,
             max_parallelism_achieved=self.page_queue.max_parallelism_achieved,
-            num_failed_pages=len(self.page_queue.failed_page_nums))
+            num_failed_pages=len(self.page_queue.tracker.failed_page_nums))
 
     class FailedBatchPage:
         def __init__(self, page_num: int, page: BatchPage, did_signal_next_page: bool, exception: BaseException) -> None:
