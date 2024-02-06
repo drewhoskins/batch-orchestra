@@ -3,15 +3,15 @@
 #    poetry run python sample/run_workers.py
 import asyncio
 import multiprocessing
-import signal
-import sys, os
 
 from temporalio.client import Client
 from temporalio.worker import Worker
 
 import logging
 
-from batch_orchestrator import BatchOrchestrator, process_page, batch_orchestrator_data_converter
+from batch_orchestrator import BatchOrchestrator, process_page
+from batch_orchestrator_data import batch_orchestrator_data_converter
+
 # Import our registry of page processors
 import inflate_product_prices_page_processor
 

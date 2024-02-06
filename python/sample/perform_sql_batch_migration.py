@@ -11,7 +11,7 @@ try:
     from inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, ProductDBCursor
     from product_db import ProductDB
     import argparse
-    from batch_orchestrator import batch_orchestrator_data_converter
+    from batch_orchestrator_data import batch_orchestrator_data_converter
 except ModuleNotFoundError:
     print("This script requires poetry.  `poetry run python sample/perform_sql_batch_migration.py`.")
     sys.exit(1)
