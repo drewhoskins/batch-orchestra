@@ -86,8 +86,8 @@ class BatchOrchestrator:
 
                 # TODO: use sets
                 self._pending_page_nums: List[int] = []
-                self._processing_page_nums: List[int] = []
-                self._failed_page_nums: List[int] = []
+                self._processing_page_nums: Set[int] = set()
+                self._failed_page_nums: Set[int] = set()
 
             @property
             def num_pages_ever_enqueued(self) -> int:
@@ -98,7 +98,7 @@ class BatchOrchestrator:
                 return self._num_pages_processed
 
             @property
-            def failed_page_nums(self) -> List[int]:
+            def failed_page_nums(self) -> Set[int]:
                 return self._failed_page_nums.copy()
 
             @property
@@ -127,14 +127,14 @@ class BatchOrchestrator:
             def on_page_started(self, page_num: int) -> None:
                 assert page_num in self._pending_page_nums
                 self._pending_page_nums.remove(page_num)
-                self._processing_page_nums.append(page_num)
+                self._processing_page_nums.add(page_num)
 
             def on_page_completed(self, page_num: int) -> None:
                 self._num_pages_processed += 1
                 self._processing_page_nums.remove(page_num)
 
             def on_page_failed(self, page_num: int) -> None:
-                self._failed_page_nums.append(page_num)
+                self._failed_page_nums.add(page_num)
                 self._processing_page_nums.remove(page_num)
             
         def __init__(self, input: BatchOrchestratorInput) -> None:
