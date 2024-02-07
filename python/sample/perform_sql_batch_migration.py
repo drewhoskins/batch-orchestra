@@ -43,8 +43,8 @@ async def main(num_items):
         result = await client.execute_workflow(
             BatchOrchestrator.run, 
             BatchOrchestratorInput(
-                batch_name="inflate_product_prices", 
-                page_processor=inflate_product_prices.__name__, 
+                batch_id="inflate_product_prices", 
+                page_processor_name=inflate_product_prices.__name__, 
                 max_parallelism=5,
                 page_size=100,
                 page_processor_args=args.to_json()), 

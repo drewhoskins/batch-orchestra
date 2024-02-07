@@ -16,15 +16,17 @@ from temporalio.common import RetryPolicy
 
 @dataclass(kw_only=True)
 class BatchOrchestratorInput:
-    batch_name: str
     # The function, annotated with @page_processor, that will be called on your worker for each page
-    page_processor: str
+    page_processor_name: str
     # Use this to manage load on your downstream dependencies such as DBs or APIs by limiting the number of pages
     # processed simultaneously.
     max_parallelism: int
     # The number of items per page, to process in series.  Choose an amount that you can comfortably
     # process within the page_timeout_seconds.
     page_size: int
+    # Prepended to log messages to help you identify which batch is being processed.  Useful if the batch may requires
+    # multiple workflows (with separate workflow IDs) to process.  Defaults to the first workflow ID.
+    batch_id: str = ''
     # The start_to_close_timeout of the activity that runs your page processor.
     # This should typically be within the drain allowance of the worker that runs your page processor.  That 
     # would allow your activity to finish in case of a graceful shutdown.

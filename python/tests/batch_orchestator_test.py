@@ -59,8 +59,7 @@ async def test_one_page(client: Client):
 
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=processes_n_items.__name__, 
+            page_processor_name=processes_n_items.__name__, 
             max_parallelism=3, 
             page_size=10,
             first_cursor_str=default_cursor(),
@@ -78,8 +77,7 @@ async def test_two_pages(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=processes_n_items.__name__, 
+            page_processor_name=processes_n_items.__name__, 
             max_parallelism=10, 
             page_size=10,
             first_cursor_str=default_cursor(),
@@ -114,8 +112,8 @@ async def test_max_parallelism(client: Client):
     async with batch_worker(client, task_queue_name):
         max_parallelism = 3
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=processes_n_items.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=processes_n_items.__name__, 
             max_parallelism=max_parallelism, 
             page_size=10,
             first_cursor_str=default_cursor(),
@@ -133,8 +131,8 @@ async def test_page_size(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=processes_n_items.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=processes_n_items.__name__, 
             max_parallelism=3, 
             page_size=5,
             first_cursor_str=default_cursor(),
@@ -156,8 +154,8 @@ async def test_timeout(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=asserts_timeout.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=asserts_timeout.__name__, 
             max_parallelism=3, 
             page_size=10,
             page_timeout_seconds=123,
@@ -182,8 +180,8 @@ async def test_extended_retries(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=fails_once.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=fails_once.__name__, 
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one",
@@ -205,8 +203,8 @@ async def test_ignores_subsequent_signals(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=signals_same_page_infinitely.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=signals_same_page_infinitely.__name__, 
             max_parallelism=3,
             page_size=10,
             first_cursor_str="page one")
@@ -232,8 +230,8 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=fails_before_signal.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=fails_before_signal.__name__, 
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one",
@@ -271,8 +269,8 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
     async with batch_worker(client, task_queue_name):
         WorkflowHandle.signal = count_signal_calls(WorkflowHandle.signal)
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=fails_after_signal.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=fails_after_signal.__name__, 
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one",
@@ -305,8 +303,8 @@ async def test_non_retryable_exceptions(client: Client):
     call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=fails_with_non_retryable_exception.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=fails_with_non_retryable_exception.__name__, 
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one",
@@ -333,8 +331,8 @@ async def test_non_retryable_application_error(client: Client):
     call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=fails_with_non_retryable_application_error.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=fails_with_non_retryable_application_error.__name__, 
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one")
@@ -365,8 +363,8 @@ async def test_timeout_then_extended_retry(client: Client):
     call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            batch_name='my_batch', 
-            page_processor=times_out_first_time.__name__, 
+            batch_id='my_batch', 
+            page_processor_name=times_out_first_time.__name__, 
             max_parallelism=3, 
             page_size=10,
             page_timeout_seconds=1, # Very aggressive to induce a timeout
