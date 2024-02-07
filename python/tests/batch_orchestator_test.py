@@ -170,6 +170,7 @@ async def test_timeout(client: Client):
         assert result.num_pages_processed == 1
 
 did_attempt_fails_once = False
+@page_processor
 async def fails_once(context: BatchProcessorContext):
     global did_attempt_fails_once
     if not did_attempt_fails_once:
@@ -192,7 +193,7 @@ async def test_extended_retries(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 2
+        assert result.num_pages_processed == 1
 
 @page_processor
 async def signals_same_page_infinitely(context: BatchProcessorContext):
@@ -257,7 +258,7 @@ async def fails_after_signal(context: BatchProcessorContext):
     if should_fail:
         raise ValueError("I failed")
 
-def count_calls(func):
+def count_signal_calls(func):
     def wrapper(*args, **kwargs):
         wrapper.calls += 1
         return func(*args, **kwargs)
@@ -268,7 +269,7 @@ def count_calls(func):
 async def test_extended_retries_first_page_fails_after_signal(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
-        WorkflowHandle.signal = count_calls(WorkflowHandle.signal)
+        WorkflowHandle.signal = count_signal_calls(WorkflowHandle.signal)
         input = BatchOrchestratorInput(
             batch_name='my_batch', 
             page_processor=fails_after_signal.__name__, 
@@ -289,18 +290,19 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
 class SomeNonRetryableException(Exception):
     pass
 
-@count_calls
-def mock_me():
-    pass
+call_count = 0
 
 @page_processor
 async def fails_with_non_retryable_exception(context: BatchProcessorContext):
-    mock_me()
+    global call_count
+    call_count += 1
     raise SomeNonRetryableException("I failed, please don't retry.")
 
 @pytest.mark.asyncio
 async def test_non_retryable_exceptions(client: Client):
     task_queue_name = str(uuid.uuid4())
+    global call_count
+    call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             batch_name='my_batch', 
@@ -313,18 +315,22 @@ async def test_non_retryable_exceptions(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert mock_me.calls == 1
+        assert call_count == 1
         assert result.num_pages_processed == 0
         assert result.num_failed_pages == 1
 
 @page_processor
+@count_signal_calls
 async def fails_with_non_retryable_application_error(context: BatchProcessorContext):
-    mock_me()
+    global call_count
+    call_count += 1
     raise ApplicationError("I failed, please don't retry.", non_retryable=True)
 
 @pytest.mark.asyncio
 async def test_non_retryable_application_error(client: Client):
     task_queue_name = str(uuid.uuid4())
+    global call_count
+    call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             batch_name='my_batch', 
@@ -336,6 +342,40 @@ async def test_non_retryable_application_error(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert mock_me.calls == 1
+        assert call_count == 1
         assert result.num_pages_processed == 0
         assert result.num_failed_pages == 1
+
+did_attempt_times_out_first_time = False
+
+
+@page_processor
+async def times_out_first_time(context: BatchProcessorContext):
+    global call_count 
+    call_count += 1
+    global did_attempt_times_out_first_time
+    if not did_attempt_times_out_first_time:
+        did_attempt_times_out_first_time = True
+        await sleep(5)
+
+@pytest.mark.asyncio
+async def test_timeout_then_extended_retry(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    global call_count
+    call_count = 0
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_name='my_batch', 
+            page_processor=times_out_first_time.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            page_timeout_seconds=1, # Very aggressive to induce a timeout
+            first_cursor_str="page one",
+            initial_retry_policy=RetryPolicy(maximum_attempts=1))
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        assert call_count == 2
+        assert result.num_pages_processed == 1
+        assert result.num_failed_pages == 0

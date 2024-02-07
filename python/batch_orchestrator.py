@@ -214,9 +214,9 @@ class BatchOrchestrator:
                 # is processed within the extended retries phase.  This will avoid extra signals filling up the workflow history.
                 did_signal_next_page = (page_num + 1) in self.pages
                 if did_signal_next_page:
-                    signaled_text = "It signaled for more work before the failure"
+                    signaled_text = "It signaled for the next page before it failed."
                 else:
-                    signaled_text = "It did not signal for more work before the failure and may be blocking further progress."
+                    signaled_text = "It did not signal with the next page before the failure and may be blocking further progress."
 
                 if self.is_non_retryable(exception):
                     workflow.logger.error(
@@ -295,9 +295,9 @@ class BatchOrchestrator:
         self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
         await self.page_queue.run()
 
-        if input.use_extended_retries and self.page_queue.tracker.failed_page_nums:
+        if input.use_extended_retries and self.page_queue.tracker.to_retry_page_nums:
             workflow.logger.info(
-                f"Moving to extended retries: {len(self.page_queue.tracker.failed_page_nums)} failed to process, " +
+                f"Moving to extended retries: {len(self.page_queue.tracker.to_retry_page_nums)} failed to process, " +
                 f"while {self.page_queue.tracker.num_pages_processed} processed successfully.")
 
             self.page_queue.re_enqueue_pages_to_retry()
