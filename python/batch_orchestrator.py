@@ -3,6 +3,7 @@ from asyncio import Future
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 from enum import Enum
+import logging
 from typing import Any, Dict, List, Optional, Set
 
 import inflect
@@ -189,24 +190,24 @@ class BatchOrchestrator:
                 self._failed_page_nums.add(page_num)
                 
             
-        def __init__(self, input: BatchOrchestratorInput) -> None:
+        def __init__(self, input: BatchOrchestratorInput, logger: BatchOrchestrator.LoggerAdapter) -> None:
             self.input = input
             self.tracker = BatchOrchestrator.PageQueue.PageTracker(self.input.max_parallelism)
             self.pages: Dict[int, BatchOrchestrator.EnqueuedPage] = {}
-            self.max_parallelism_achieved: int = 0
+            self.logger = logger
 
         # Receive new work
         def enqueue_page(self, page: BatchPage, page_num: int) -> None:
             if page_num < self.tracker.num_pages_ever_enqueued:
                 ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
-                workflow.logger.warning(
+                self.logger.warning(
                     f"Got re-signaled for the {ordinal} page, but skipping because it was already signaled for. This should be rare, " +
                     "so please report an issue if it persists.",
                     {"old_cursor": self.pages[page_num].page.cursor_str, "new_cursor": page.cursor_str, page_num: page_num})
                 return
             duplicate = next((enqueued_page for enqueued_page in self.pages.values() if enqueued_page.page.cursor_str == page.cursor_str), None)
             if duplicate:
-                workflow.logger.warning(
+                self.logger.warning(
                     f"Got re-signaled for the page with cursor {page.cursor_str}, but skipping because it was already signaled for. While it's possible " +
                     "for duplicate signals to be sent, it's rare.  Did you mis-compute your next cursor?",
                     {"old_page_num": duplicate.page_num, "new_page_num": page_num, "cursor": page.cursor_str})
@@ -230,7 +231,6 @@ class BatchOrchestrator:
                 users_exception_type_str = exception.type
                 return users_exception_type_str in (self.input.initial_retry_policy.non_retryable_error_types or set())
             else:
-                # I think all other error types (e.g. timeouts) are retryable.
                 return False
 
         def on_page_failed(self, page: BatchPage, page_num: int, exception: BaseException) -> None:
@@ -245,13 +245,13 @@ class BatchOrchestrator:
             ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
 
             if self.is_non_retryable(exception):
-                workflow.logger.error(
+                self.logger.error(
                     f"Batch executor failed {page.cursor_str} page, the {ordinal} page, with a non-retryable error.",
                     {"exception": exception})
                 self.tracker.on_page_failed_permanently(page_num)
                 self.pages[page_num].set_processing_failed_permanently(exception, did_signal_next_page)
             else:
-                workflow.logger.info(
+                self.logger.info(
                     f"Batch orchestrator failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}  Will retry.", 
                     {"exception": exception})
                 self.tracker.on_page_failed_initially(page_num)
@@ -266,7 +266,7 @@ class BatchOrchestrator:
                 self.on_page_failed(page, page_num, exception)
             else:
                 ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
-                workflow.logger.info(f"Batch orchestrator completed {page.cursor_str}, the {ordinal} page.")
+                self.logger.info(f"Batch orchestrator completed {page.cursor_str}, the {ordinal} page.")
                 self.pages[page_num].set_processing_finished()
                 self.tracker.on_page_completed(page_num)
 
@@ -317,19 +317,29 @@ class BatchOrchestrator:
     async def signal_add_page(self, page: BatchPage, page_num: int) -> None:
         now = workflow.now().strftime('%H:%M:%S.%f')
 
-        workflow.logger.info(f"{now} Enqueuing page request for cursor {page.cursor_str}")
+        self.logger.info(f"{now} Enqueuing page request for cursor {page.cursor_str}")
         self.page_queue.enqueue_page(page, page_num)
 
+    def run_init(self, input: BatchOrchestratorInput) -> None:
+        self.input = input
+        self.logger = BatchOrchestrator.LoggerAdapter(input)
+        self.page_queue = BatchOrchestrator.PageQueue(input, self.logger)
+
+    # The main algorithm
+    # First we enqueue the first page, then we wait for the queue to finish processing.
+    # Each page is retried according to initial_retry_policy, which is limited to a certain number of retries by default.
+    # We do this to avoid "gumming up the queue" with permanent failures, letting healthy pages through.
+    # Any pages that failed are put into "extended retries" and run the queue again to run until they're all done.
     @workflow.run
     async def run(self, input: BatchOrchestratorInput) -> BatchOrchestratorResults:
-        workflow.logger.info("Starting batch executor")
+        self.run_init(input)
 
-        self.page_queue = BatchOrchestrator.PageQueue(input)
+        self.logger.info("Starting batch.")
         self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
         await self.page_queue.run()
 
         if input.use_extended_retries and self.page_queue.tracker.to_retry_page_nums:
-            workflow.logger.info(
+            self.logger.info(
                 f"Moving to extended retries: {len(self.page_queue.tracker.to_retry_page_nums)} failed to process, " +
                 f"while {self.page_queue.tracker.num_pages_processed} processed successfully.")
 
@@ -337,7 +347,7 @@ class BatchOrchestrator:
             await self.page_queue.run()
 
 
-        workflow.logger.info(f"Batch executor completed {self.page_queue.tracker.num_pages_processed} pages")
+        self.logger.info(f"Batch executor completed {self.page_queue.tracker.num_pages_processed} pages")
 
         return BatchOrchestratorResults(
             num_pages_processed=self.page_queue.tracker.num_pages_processed,

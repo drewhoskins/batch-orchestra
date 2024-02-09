@@ -2,6 +2,7 @@ from __future__ import annotations
 from asyncio import sleep
 from dataclasses import asdict, dataclass
 import json
+import logging
 from unittest.mock import patch
 import pytest
 import uuid
@@ -377,3 +378,35 @@ async def test_timeout_then_extended_retry(client: Client):
         assert call_count == 2
         assert result.num_pages_processed == 1
         assert result.num_failed_pages == 0
+
+class MyHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+@pytest.mark.asyncio
+async def test_logging(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    
+    async with batch_worker(client, task_queue_name):
+        logger = logging.getLogger('batch_orchestrator')
+        log_capture = MyHandler()
+        logger.addHandler(log_capture)
+
+        input = BatchOrchestratorInput(
+            batch_id='my_batch',
+            page_processor_name=processes_n_items.__name__, 
+            max_parallelism=10, 
+            page_size=10,
+            first_cursor_str=default_cursor(),
+            page_processor_args=MyArgs(num_items_to_process=19).to_json())
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        result = await handle.result()
+        first_log = log_capture.records[0].__dict__
+        assert first_log['msg'].startswith("Starting batch.")
+        assert first_log['batch_id'] == 'my_batch'
