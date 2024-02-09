@@ -23,7 +23,7 @@ async def returns_cursor(context: BatchProcessorContext):
 @pytest.mark.asyncio
 async def test_page_processor():
     env = ActivityEnvironment()
-    result = await env.run(batch_orchestrator.process_page, returns_cursor.__name__, BatchPage("some_cursor", 10), 0, "some_args", False)
+    result = await env.run(batch_orchestrator.process_page, returns_cursor.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
     assert result == "some_cursor"
 
 
@@ -49,7 +49,7 @@ async def on_signal(
 async def test_signal():
     with patch.object(WorkflowHandle, 'signal', new=on_signal) as signal_mock:
         env = ActivityEnvironment()
-        result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, BatchPage("some_cursor", 10), 0, "some_args", False)
+        result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
 
 expected_heartbeat_details = "signaled_next_page"
 
@@ -63,14 +63,14 @@ async def test_heartbeat():
         env = ActivityEnvironment()
         env.on_heartbeat = on_heartbeat
 
-        result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, BatchPage("some_cursor", 10), 0, "some_args", False)
+        result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
 
 @pytest.mark.asyncio
 async def test_idempotency():
     # Simulate the first time the page is processed and we should signal the workflow
     with patch.object(WorkflowHandle, 'signal') as signal_mock:
             env = ActivityEnvironment()
-            result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, BatchPage("some_cursor", 10), 0, "some_args", False)
+            result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
         
             signal_mock.assert_called_once()
 
@@ -79,7 +79,7 @@ async def test_idempotency():
             instance = mock_activity_info.return_value
             instance.heartbeat_details = [expected_heartbeat_details]
             env = ActivityEnvironment()
-            result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, BatchPage("some_cursor", 10), 0, "some_args", False)
+            result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
         
             signal_mock.assert_not_called()
 
@@ -88,7 +88,7 @@ async def test_extended_retry_does_not_resignal():
     with patch.object(WorkflowHandle, 'signal') as signal_mock:
         env = ActivityEnvironment()
         # Pass in that we already signaled, so when the activity enqueues the new page, we ignore it.
-        result = await env.run(process_page, starts_new_page.__name__, BatchPage("some_cursor", 10), 0, "some_args", True)
+        result = await env.run(process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", True)
         signal_mock.assert_not_called()
 
 @page_processor
@@ -97,13 +97,23 @@ async def attempts_to_signal_twice(context: BatchProcessorContext):
     await context.enqueue_next_page(BatchPage("second_cursor", current_page.size))
     await context.enqueue_next_page(BatchPage("third_cursor", current_page.size))
 
+@page_processor
+async def checks_batch_id(context: BatchProcessorContext):
+    assert context.get_batch_id() == "my_batch_id"
+
+@pytest.mark.asyncio
+async def test_batch_id():
+    with patch.object(WorkflowHandle, 'signal') as signal_mock:
+        env = ActivityEnvironment()
+        result = await env.run(process_page, checks_batch_id.__name__, "my_batch_id", BatchPage("first_cursor", 10), 0, "some_args", False)    
+
 @pytest.mark.asyncio
 async def test_cannot_enqueue_two_pages():
     with patch.object(WorkflowHandle, 'signal') as signal_mock:
         env = ActivityEnvironment()
         try:
             # Pass in that we already signaled, so when the activity enqueues the new page, we ignore it.
-            result = await env.run(process_page, attempts_to_signal_twice.__name__, BatchPage("first_cursor", 10), 0, "some_args", False)
+            result = await env.run(process_page, attempts_to_signal_twice.__name__, None, BatchPage("first_cursor", 10), 0, "some_args", False)
         except AssertionError as e:
             assert str(e) == ("You cannot call enqueue_next_page twice in the same page_processor.  Each processed page " +
               "is responsible for enqueuing the following page.")

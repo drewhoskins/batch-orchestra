@@ -387,18 +387,25 @@ class MyHandler(logging.Handler):
     def emit(self, record):
         self.records.append(record)
 
+@page_processor
+async def checks_batch_id(context: BatchProcessorContext):
+    assert context.get_batch_id() == 'my_batch'
+    context.logger.info("I'm processing a page")
+
 @pytest.mark.asyncio
 async def test_logging(client: Client):
     task_queue_name = str(uuid.uuid4())
     
     async with batch_worker(client, task_queue_name):
-        logger = logging.getLogger('batch_orchestrator')
         log_capture = MyHandler()
-        logger.addHandler(log_capture)
+        workflow_logger = logging.getLogger('batch_orchestrator')
+        workflow_logger.addHandler(log_capture)
+        activity_logger = logging.getLogger('batch_processor')
+        activity_logger.addHandler(log_capture)
 
         input = BatchOrchestratorInput(
             batch_id='my_batch',
-            page_processor_name=processes_n_items.__name__, 
+            page_processor_name=checks_batch_id.__name__, 
             max_parallelism=10, 
             page_size=10,
             first_cursor_str=default_cursor(),
@@ -407,6 +414,15 @@ async def test_logging(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
+        # Make sure workflow logs the batch ID.
         first_log = log_capture.records[0].__dict__
         assert first_log['msg'].startswith("Starting batch.")
         assert first_log['batch_id'] == 'my_batch'
+
+        # Now make sure the activity logs it
+        activity_log = next(filter(lambda r: r.__dict__['msg'].startswith("I'm processing a page"), log_capture.records), None)
+        print("=================")
+        for log in log_capture.records:
+            print(log.__dict__['msg'])
+        assert activity_log is not None
+        assert activity_log.__dict__['batch_id'] == 'my_batch'

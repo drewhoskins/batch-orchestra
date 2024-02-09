@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import logging
 from typing import Any, Optional
 from enum import Enum
 
@@ -53,8 +54,9 @@ class BatchPage:
 # convert batchPageProcessorName to a function and call it with the page
 # Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
 @activity.defn
-async def process_page(batch_page_processor_name: str, page: BatchPage, page_num: int, args: Optional[str], did_signal_next_page: bool) -> Any:
+async def process_page(batch_page_processor_name: str, batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], did_signal_next_page: bool) -> Any:
     context = await BatchProcessorContext(
+        batch_id=batch_id,
         page=page,
         page_num=page_num,
         args=args,
@@ -68,7 +70,25 @@ async def process_page(batch_page_processor_name: str, page: BatchPage, page_num
             f"Available functions: {list_page_processors()}")
     return await userProvidedActivity(context)
     
-    
+class LoggerAdapter(activity.LoggerAdapter):
+    def __init__(self, context: BatchProcessorContext) -> None:
+        if context.has_batch_id():
+            self._batch_id = context.get_batch_id()
+        else:
+            self._batch_id = None
+        super().__init__(logging.getLogger(__name__), {})
+
+    def process(self, msg, kwargs):
+        msg, kwargs = super().process(msg, kwargs)
+        if self._batch_id is not None:
+            extra_data = {'batch_id': self._batch_id}
+            if 'extra' in kwargs:
+                kwargs['extra'].update(extra_data)
+            else:
+                kwargs['extra'] = extra_data
+        return msg, kwargs
+
+
 # This class is the only argument passed to your page processor function but contains everything you need.
 class BatchProcessorContext:
 
@@ -78,13 +98,15 @@ class BatchProcessorContext:
         THIS_RUN = 2
         PREVIOUS_RUN = 3
 
-    def __init__(self, *, page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
+    def __init__(self, *, batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
+        self._batch_id = batch_id
         self._page = page
         self._page_num = page_num
         self._activity_info = activity_info
         self._args = args
         self._workflow_client: Optional[Client] = None
         self._parent_workflow: Optional[WorkflowHandle] = None
+        self._logger = LoggerAdapter(self)
         if did_signal_next_page:
             self._next_page_signaled = BatchProcessorContext.NextPageSignaled.INITIAL_PHASE
         elif "signaled_next_page" in activity.info().heartbeat_details:
@@ -93,8 +115,9 @@ class BatchProcessorContext:
             self._next_page_signaled = BatchProcessorContext.NextPageSignaled.NOT_SIGNALED 
 
     # Prints to the Worker's logs.  If you are developing locally and want to see the logs, run the Worker in the foreground and with debug_mode=True.
+    @property
     def logger(self):
-        return activity.logger
+        return self._logger
 
     async def async_init(self)-> BatchProcessorContext:
         # TODO add data converter just in case
@@ -116,9 +139,17 @@ class BatchProcessorContext:
             raise ValueError("You cannot use get_args because you did not pass any args into BatchOrchestratorInput.page_processor_args")
         return result 
 
-    def _did_signal_next_page(self) -> bool:
-        return self._next_page_signaled != BatchProcessorContext.NextPageSignaled.NOT_SIGNALED
-    
+
+    # The identifier for the batch, potentially across multiple workflows.
+    # 
+    def get_batch_id(self) -> str:
+        assert self._batch_id is not None, "You're getting the batch ID but didn't pass one in to BatchOrchestratorInput.batch_id."
+        return self._batch_id
+
+    # Checks whether you passed anything into BatchOrchestratorInput.batch_id when you created the workflow.
+    def has_batch_id(self) -> bool:
+        return self._batch_id is not None
+
     # Call this with your next cursor before you process the page to enqueue the next chunk on the BatchOrchestator.
     async def enqueue_next_page(self, page: BatchPage) -> None:
         assert self._parent_workflow is not None, \
@@ -140,4 +171,7 @@ class BatchProcessorContext:
 
         self._next_page_signaled = BatchProcessorContext.NextPageSignaled.THIS_RUN
         activity.heartbeat("signaled_next_page")
+    
+    def _did_signal_next_page(self) -> bool:
+        return self._next_page_signaled != BatchProcessorContext.NextPageSignaled.NOT_SIGNALED
     

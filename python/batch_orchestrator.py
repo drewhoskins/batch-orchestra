@@ -91,6 +91,10 @@ class BatchOrchestrator:
                 else:
                     kwargs['extra'] = extra_data
             return msg, kwargs
+
+        def describe_page(self, page_num: int, page: BatchPage) -> str:
+            ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
+            return f"the page with cursor {page.cursor_str}, the {ordinal} page"
             
 
     class PageQueue:
@@ -196,20 +200,19 @@ class BatchOrchestrator:
             self.pages: Dict[int, BatchOrchestrator.EnqueuedPage] = {}
             self.logger = logger
 
-        # Receive new work
+        # Receive new work from a page processor
         def enqueue_page(self, page: BatchPage, page_num: int) -> None:
             if page_num < self.tracker.num_pages_ever_enqueued:
-                ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
                 self.logger.warning(
-                    f"Got re-signaled for the {ordinal} page, but skipping because it was already signaled for. This should be rare, " +
-                    "so please report an issue if it persists.",
+                    f"Got re-signaled for {self.logger.describe_page(page_num, page)}, but skipping because it was already signaled for. " +
+                    "This should be rare, so please report an issue if it persists.",
                     {"old_cursor": self.pages[page_num].page.cursor_str, "new_cursor": page.cursor_str, page_num: page_num})
                 return
             duplicate = next((enqueued_page for enqueued_page in self.pages.values() if enqueued_page.page.cursor_str == page.cursor_str), None)
             if duplicate:
                 self.logger.warning(
-                    f"Got re-signaled for the page with cursor {page.cursor_str}, but skipping because it was already signaled for. While it's possible " +
-                    "for duplicate signals to be sent, it's rare.  Did you mis-compute your next cursor?",
+                    f"Got re-signaled for {self.logger.describe_page(page_num, page)}, but skipping because it was already signaled for. " +
+                    "While it's possible for duplicate signals to be sent, it's rare. Did you mis-compute your next cursor?",
                     {"old_page_num": duplicate.page_num, "new_page_num": page_num, "cursor": page.cursor_str})
                 return
 
@@ -242,17 +245,16 @@ class BatchOrchestrator:
                 signaled_text = "It signaled for the next page before it failed."
             else:
                 signaled_text = "It did not signal with the next page before the failure and may be blocking further progress."
-            ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
 
             if self.is_non_retryable(exception):
                 self.logger.error(
-                    f"Batch executor failed {page.cursor_str} page, the {ordinal} page, with a non-retryable error.",
+                    f"Batch executor failed {self.logger.describe_page(page_num, page)}, with a non-retryable error.",
                     {"exception": exception})
                 self.tracker.on_page_failed_permanently(page_num)
                 self.pages[page_num].set_processing_failed_permanently(exception, did_signal_next_page)
             else:
                 self.logger.info(
-                    f"Batch orchestrator failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}  Will retry.", 
+                    f"Batch orchestrator failed {self.logger.describe_page(page_num, page)}.  {signaled_text}  Will retry.", 
                     {"exception": exception})
                 self.tracker.on_page_failed_initially(page_num)
                 self.pages[page_num].set_processing_failed_initially(exception, did_signal_next_page)
@@ -265,8 +267,7 @@ class BatchOrchestrator:
                 assert exception is not None
                 self.on_page_failed(page, page_num, exception)
             else:
-                ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
-                self.logger.info(f"Batch orchestrator completed {page.cursor_str}, the {ordinal} page.")
+                self.logger.info(f"Batch orchestrator completed {self.logger.describe_page(page_num, page)}.")
                 self.pages[page_num].set_processing_finished()
                 self.tracker.on_page_completed(page_num)
 
@@ -278,7 +279,7 @@ class BatchOrchestrator:
             already_tried = enqueued_page.phase == BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
             future = workflow.start_activity(
                 process_page, 
-                args=[self.input.page_processor_name, page, page_num, self.input.page_processor_args, enqueued_page.did_signal_next_page], 
+                args=[self.input.page_processor_name, self.input.batch_id, page, page_num, self.input.page_processor_args, enqueued_page.did_signal_next_page], 
                 start_to_close_timeout=timedelta(seconds=self.input.page_timeout_seconds),
                 retry_policy=self._build_retry_policy(already_tried)
                 )
@@ -315,9 +316,7 @@ class BatchOrchestrator:
     #
     @workflow.signal
     async def signal_add_page(self, page: BatchPage, page_num: int) -> None:
-        now = workflow.now().strftime('%H:%M:%S.%f')
-
-        self.logger.info(f"{now} Enqueuing page request for cursor {page.cursor_str}")
+        self.logger.info(f"Enqueuing {self.logger.describe_page(page_num, page)}.")
         self.page_queue.enqueue_page(page, page_num)
 
     def run_init(self, input: BatchOrchestratorInput) -> None:
