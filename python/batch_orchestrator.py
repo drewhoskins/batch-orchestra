@@ -19,7 +19,7 @@ from batch_orchestrator_data import BatchOrchestratorInput, BatchOrchestratorRes
 #
 # batch_orchestrator library
 # 
-# This file contains the orchestator responsible for juggling pages of work and executing them in parallel.
+# This file contains the orchestrator responsible for juggling pages of work and executing them in parallel.
 # It works in conjunction with the BatchProcessor library
 # 
 # The BatchOrchestrator:

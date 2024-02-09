@@ -20,7 +20,7 @@ from temporalio.exceptions import ApplicationError
 #   * Must be async.
 #   * Take a BatchProcessorContext as its only argument.
 #   * It has two goals
-#       1. To get the next page of work and enqueue it on the BatchOrchestator
+#       1. To get the next page of work and enqueue it on the BatchOrchestrator
 #       2. To process a page of work 
 #   * BatchPage represents a page.
 #   * It will use the BatchProcessorContext class to access the cursor and any args passed to it.
@@ -152,7 +152,7 @@ class BatchProcessorContext:
     def has_batch_id(self) -> bool:
         return self._batch_id is not None
 
-    # Call this with your next cursor before you process the page to enqueue the next chunk on the BatchOrchestator.
+    # Call this with your next cursor before you process the page to enqueue the next chunk on the BatchOrchestrator.
     async def enqueue_next_page(self, page: BatchPage) -> None:
         assert self._parent_workflow is not None, \
             ("BatchProcessorContext.async_init() was never called.  This class should only be " +
