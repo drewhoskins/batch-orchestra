@@ -233,38 +233,40 @@ class BatchOrchestrator:
                 # I think all other error types (e.g. timeouts) are retryable.
                 return False
 
+        def on_page_failed(self, page: BatchPage, page_num: int, exception: BaseException) -> None:
+
+            # If the page told us about its successor, we need to tell the page processor not to re-signal when it
+            # is processed within the extended retries phase.  This will avoid extra signals filling up the workflow history.
+            did_signal_next_page = (page_num + 1) in self.pages
+            if did_signal_next_page:
+                signaled_text = "It signaled for the next page before it failed."
+            else:
+                signaled_text = "It did not signal with the next page before the failure and may be blocking further progress."
+            ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
+
+            if self.is_non_retryable(exception):
+                workflow.logger.error(
+                    f"Batch executor failed {page.cursor_str} page, the {ordinal} page, with a non-retryable error.",
+                    {"exception": exception})
+                self.tracker.on_page_failed_permanently(page_num)
+                self.pages[page_num].set_processing_failed_permanently(exception, did_signal_next_page)
+            else:
+                workflow.logger.info(
+                    f"Batch orchestrator failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}  Will retry.", 
+                    {"exception": exception})
+                self.tracker.on_page_failed_initially(page_num)
+                self.pages[page_num].set_processing_failed_initially(exception, did_signal_next_page)
+
         def on_page_processed(self, future: Future[str], page_num: int, page: BatchPage) -> None:
             exception = future.exception()
-            ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
-            workflow.logger.info(f"Finished processing the {ordinal} page.  Exception {exception}")
             if exception is not None:
                 assert isinstance(exception, ActivityError)
                 exception = exception.__cause__
                 assert exception is not None
-
-                # If the page told us about its successor, we need to tell the page processor not to re-signal when it
-                # is processed within the extended retries phase.  This will avoid extra signals filling up the workflow history.
-                did_signal_next_page = (page_num + 1) in self.pages
-                if did_signal_next_page:
-                    signaled_text = "It signaled for the next page before it failed."
-                else:
-                    signaled_text = "It did not signal with the next page before the failure and may be blocking further progress."
-
-                if self.is_non_retryable(exception):
-                    workflow.logger.error(
-                        f"Batch executor failed {page.cursor_str} page, the {ordinal} page, with a non-retryable error.",
-                        {"exception": exception})
-                    self.tracker.on_page_failed_permanently(page_num)
-                    self.pages[page_num].set_processing_failed_permanently(exception, did_signal_next_page)
-                else:
-                    workflow.logger.info(
-                        f"Batch executor failed to complete {page.cursor_str} page, the {ordinal} page.  {signaled_text}  Will retry.", 
-                        {"exception": exception})
-                    self.tracker.on_page_failed_initially(page_num)
-                    self.pages[page_num].set_processing_failed_initially(exception, did_signal_next_page)
-
+                self.on_page_failed(page, page_num, exception)
             else:
-                workflow.logger.info(f"Batch executor completed {page.cursor_str}, the {ordinal} page")
+                ordinal = inflect.engine().ordinal(page_num + 1) # type: ignore
+                workflow.logger.info(f"Batch orchestrator completed {page.cursor_str}, the {ordinal} page.")
                 self.pages[page_num].set_processing_finished()
                 self.tracker.on_page_completed(page_num)
 
