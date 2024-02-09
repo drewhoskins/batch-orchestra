@@ -1,3 +1,4 @@
+import sys
 try:
     import asyncio
     from dataclasses import dataclass
@@ -5,15 +6,16 @@ try:
     from typing import Generic
     import uuid
     from temporalio.client import Client
-    import sys, os
+    import os
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
     from inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, ProductDBCursor
     from product_db import ProductDB
     import argparse
     from batch_orchestrator_data import batch_orchestrator_data_converter
-except ModuleNotFoundError:
+except ModuleNotFoundError as e:
     print("This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.")
+    print(f"Original error: {e}")
     sys.exit(1)
 #
 # This sample shows a typical parallel batch migration of an entire sqlite table on an example table of products

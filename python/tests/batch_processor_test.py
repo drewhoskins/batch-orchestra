@@ -1,18 +1,24 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Any, Sequence
-from unittest.mock import patch
+import sys
+try:
+    from dataclasses import dataclass
+    from typing import Any, Sequence
+    from unittest.mock import patch
 
-import pytest
+    import pytest
 
-from temporalio.client import WorkflowHandle
-from temporalio.testing import ActivityEnvironment
-from temporalio.activity import info
-import temporalio.common
-import temporalio.exceptions
+    from temporalio.client import WorkflowHandle
+    from temporalio.testing import ActivityEnvironment
+    from temporalio.activity import info
+    import temporalio.common
+    import temporalio.exceptions
 
-import batch_orchestrator
-from batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page
+    import batch_orchestrator
+    from batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page
+except ModuleNotFoundError as e:
+    print("This script requires poetry.  Try `poetry run python ./tests/batch_orchestrator_test.py`.")
+    print(f"Original error: {e}")
+    sys.exit(1)
 
 @page_processor
 async def returns_cursor(context: BatchProcessorContext):
@@ -119,3 +125,6 @@ async def test_cannot_enqueue_two_pages():
               "is responsible for enqueuing the following page.")
         else: 
             raise ValueError("Should have received a BatchProcessorRetryableError exception which wraps the assertion.")
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

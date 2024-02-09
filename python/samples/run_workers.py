@@ -1,19 +1,24 @@
 # Having set up a temporal server at localhost:7233,
 # you can start 5 sample workers with this script:
 #    poetry run python samples/run_workers.py
-import asyncio
-import multiprocessing
+import sys
+try:
+    import asyncio
+    import multiprocessing
+    import logging
 
-from temporalio.client import Client
-from temporalio.worker import Worker
+    from temporalio.client import Client
+    from temporalio.worker import Worker
 
-import logging
+    from batch_orchestrator import BatchOrchestrator, process_page
+    from batch_orchestrator_data import batch_orchestrator_data_converter
 
-from batch_orchestrator import BatchOrchestrator, process_page
-from batch_orchestrator_data import batch_orchestrator_data_converter
-
-# Import our registry of page processors
-import inflate_product_prices_page_processor
+    # Import our registry of page processors
+    import inflate_product_prices_page_processor
+except ModuleNotFoundError as e:
+    print("This script requires poetry.  `poetry run python samples/run_workers.py`.")
+    print(f"Original error: {e}")
+    sys.exit(1)
 
 interrupt_event = asyncio.Event()
 

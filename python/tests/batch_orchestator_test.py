@@ -1,19 +1,26 @@
 from __future__ import annotations
-from asyncio import sleep
-from dataclasses import asdict, dataclass
-import json
-import logging
-from unittest.mock import patch
-import pytest
-import uuid
+import sys
+try:
+    from asyncio import sleep
+    from dataclasses import asdict, dataclass
+    import json
+    import logging
+    from unittest.mock import patch
+    import pytest
+    import uuid
 
-from batch_processor import BatchPage
-from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
-from temporalio.common import RetryPolicy
-from temporalio.client import Client, WorkflowHandle
-from temporalio.worker import Worker
-from temporalio.exceptions import ApplicationError
-from batch_processor import BatchProcessorContext, page_processor
+    from temporalio.common import RetryPolicy
+    from temporalio.client import Client, WorkflowHandle
+    from temporalio.worker import Worker
+    from temporalio.exceptions import ApplicationError
+
+    from batch_processor import BatchPage
+    from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
+    from batch_processor import BatchProcessorContext, page_processor
+except ModuleNotFoundError as e:
+    print("This script requires poetry.  Try `poetry run python ./tests/batch_orchestrator_test.py`.")
+    print(f"Original error: {e}")
+    sys.exit(1)
 
 @dataclass
 class MyCursor:
@@ -426,3 +433,6 @@ async def test_logging(client: Client):
             print(log.__dict__['msg'])
         assert activity_log is not None
         assert activity_log.__dict__['batch_id'] == 'my_batch'
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
