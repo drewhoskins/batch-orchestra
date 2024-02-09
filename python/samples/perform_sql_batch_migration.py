@@ -13,15 +13,15 @@ try:
     import argparse
     from batch_orchestrator_data import batch_orchestrator_data_converter
 except ModuleNotFoundError:
-    print("This script requires poetry.  `poetry run python sample/perform_sql_batch_migration.py`.")
+    print("This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.")
     sys.exit(1)
 #
 # This sample shows a typical parallel batch migration of an entire sqlite table on an example table of products
 # and their prices.  This file is the caller; see inflate_product_prices_page_processor.py for the implementation.
 # To run this sample:
 #  1. Start a temporal server locally with docker-compose up
-#  2. Start your workers with poetry run python sample/run_workers.py
-#  3. Run this script with poetry run python sample/perform_sql_batch_migration.py
+#  2. Start your workers with poetry run python samples/run_workers.py
+#  3. Run this script with poetry run python samples/perform_sql_batch_migration.py
 #
 async def main(num_items):
     client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
@@ -71,6 +71,6 @@ async def main(num_items):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table.")
     parser.add_argument("--num_items", type=int, default=1000, help="The number of items to populate the table with and process.")
-    parser.usage = "poetry run python sample/perform_sql_batch_migration.py --num_items <N, default 1000>"
+    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 1000>"
     args = parser.parse_args()
     asyncio.run(main(args.num_items))
