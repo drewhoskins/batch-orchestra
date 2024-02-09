@@ -36,13 +36,13 @@ class ProductDBCursor:
 # I decided to leave this kinda flaky to show off the resilience of the BatchOrchestrator.
 @page_processor
 async def inflate_product_prices(context: BatchProcessorContext):
-    page = context.get_page()
+    page = context.page
     if page.cursor_str == "":
         cursor = ProductDBCursor(key=None)
     else:
         cursor = ProductDBCursor.from_json(page.cursor_str)
 
-    args = ConfigArgs.from_json(context.get_args())
+    args = ConfigArgs.from_json(context.args_str)
     db_connection = ProductDB.get_db_connection(args.db_file)
     
     products = ProductDB.fetch_page(db_connection, cursor.key, page.size)
@@ -62,6 +62,6 @@ async def inflate_product_prices(context: BatchProcessorContext):
         # Allows the worker to context-switch, showing off parallelism when testing on systems with fewer cores.
 
     next_page_message = f"Next page cursor = {products[-1].key}" if products else "And that's all, folks!"
-    context.logger().info(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
+    context.logger.info(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
     sys.stdout.flush()
     

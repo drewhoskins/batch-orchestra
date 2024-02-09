@@ -27,7 +27,7 @@ Then use pytest to run the tests:
 
     poetry run pytest tests/
 
-You may also run the sample.  See its [README](./sample/README.md)
+You may also run the sample.  See its [README](./samples/README.md)
 
 ## Reviewer's guide
 
@@ -39,12 +39,12 @@ Some things to keep an eye on/ that I want to tackle before the initial release
 * Test on other machines
 * Polish and document.
 * Harmonize with python-sdk and python best practices.  (What did I miss?)
-* Allow scripts and tests to be run from more directories (it's finicky right now)
 
 ## Roadmap
 * Error handling
-** Allow users to author an activity to intercept failures, perhaps to send an notification. 
+** Call a handler when there are initial failures, to be used for notifications and such.
 ** Allow users to designate individual records as failures and proceed with the rest of their page.
+* Allow users to query the current state of the batch framework.
 * Huge batches that span multiple workflow histories.  Likely will use child workflows.
-* Log batch_id
+** Log batch_id
 * A signal that allows changing max_parallelism.  This will allow pausing and controlled rampup.

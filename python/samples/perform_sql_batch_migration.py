@@ -27,7 +27,7 @@ except ModuleNotFoundError as e:
 #
 async def main(num_items):
     client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
-
+    print("Make sure to run the sample workers with `poetry run python samples/run_workers.py` if you haven't.")
     # Create a temporary database which we'll clean up at thte end.
     db_file = NamedTemporaryFile(suffix="_my_product.db", delete=False)
     print(f"Creating a temporary database in {db_file.name}")
