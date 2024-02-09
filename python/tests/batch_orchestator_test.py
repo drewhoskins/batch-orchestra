@@ -42,7 +42,7 @@ def default_cursor():
 
 @page_processor
 async def processes_one_page(context: BatchProcessorContext):
-    return context.get_page().cursor_str
+    return context.page.cursor_str
 
 def batch_worker(client: Client, task_queue_name: str):
     return Worker(
@@ -92,8 +92,8 @@ async def test_two_pages(client: Client):
 
 @page_processor
 async def processes_n_items(context: BatchProcessorContext):
-    page = context.get_page()
-    args = MyArgs.from_json(context.get_args())
+    page = context.page
+    args = MyArgs.from_json(context.args_str)
     cursor = MyCursor.from_json(page.cursor_str)
     # Simulate whether we get an incomplete page.  If not, start a new page.
     if cursor.i + page.size < args.num_items_to_process - 1:
@@ -223,7 +223,7 @@ async def fails_before_signal(context: BatchProcessorContext):
     did_attempt_fails_before_signal = True
     if should_fail:
         raise ValueError("I failed")
-    if context.get_page().cursor_str == "page one":
+    if context.page.cursor_str == "page one":
         await context.enqueue_next_page(BatchPage("page two", 10))
 
 @pytest.mark.asyncio
@@ -250,7 +250,7 @@ async def fails_after_signal(context: BatchProcessorContext):
     global did_attempt_fails_after_signal
     should_fail = not did_attempt_fails_after_signal
     did_attempt_fails_after_signal = True
-    current_page = context.get_page()
+    current_page = context.page
     if current_page.cursor_str == "page one":
         await context.enqueue_next_page(BatchPage("page two", current_page.size))
     await sleep(0.1)
@@ -389,7 +389,7 @@ class MyHandler(logging.Handler):
 
 @page_processor
 async def checks_batch_id(context: BatchProcessorContext):
-    assert context.get_batch_id() == 'my_batch'
+    assert context.batch_id == 'my_batch'
     context.logger.info("I'm processing a page")
 
 @pytest.mark.asyncio

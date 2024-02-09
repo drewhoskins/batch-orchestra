@@ -16,8 +16,8 @@ from batch_processor import BatchProcessorContext, BatchPage, page_processor, pr
 
 @page_processor
 async def returns_cursor(context: BatchProcessorContext):
-    assert context.get_args() == "some_args"
-    return context.get_page().cursor_str
+    assert context.args_str == "some_args"
+    return context.page.cursor_str
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,7 @@ async def test_page_processor():
 
 @page_processor
 async def starts_new_page(context: BatchProcessorContext):
-    page = context.get_page()
+    page = context.page
     next_page = BatchPage(page.cursor_str + "_the_second", page.size)
     await context.enqueue_next_page(next_page)
 
@@ -93,13 +93,13 @@ async def test_extended_retry_does_not_resignal():
 
 @page_processor
 async def attempts_to_signal_twice(context: BatchProcessorContext):
-    current_page = context.get_page()
+    current_page = context.page
     await context.enqueue_next_page(BatchPage("second_cursor", current_page.size))
     await context.enqueue_next_page(BatchPage("third_cursor", current_page.size))
 
 @page_processor
 async def checks_batch_id(context: BatchProcessorContext):
-    assert context.get_batch_id() == "my_batch_id"
+    assert context.batch_id == "my_batch_id"
 
 @pytest.mark.asyncio
 async def test_batch_id():

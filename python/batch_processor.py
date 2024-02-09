@@ -72,10 +72,9 @@ async def process_page(batch_page_processor_name: str, batch_id: Optional[str], 
     
 class LoggerAdapter(activity.LoggerAdapter):
     def __init__(self, context: BatchProcessorContext) -> None:
+        self._batch_id: Optional[str] = None
         if context.has_batch_id():
-            self._batch_id = context.get_batch_id()
-        else:
-            self._batch_id = None
+            self._batch_id = context.batch_id
         super().__init__(logging.getLogger(__name__), {})
 
     def process(self, msg, kwargs):
@@ -127,13 +126,15 @@ class BatchProcessorContext:
 
         return self
 
-    def get_page(self) -> BatchPage:
+    @property
+    def page(self) -> BatchPage:
         return self._page
 
     # Gets global, user-provided args passed in BatchOrchestratorInput.page_processor_args.  
     # Any values that can differ per page should insted go into your cursor inside BatchPage.
     # Suggested usage: use JSON and deserialize the args into a dataclass.
-    def get_args(self) -> str:
+    @property
+    def args_str(self) -> str:
         result = self._args
         if result is None:
             raise ValueError("You cannot use get_args because you did not pass any args into BatchOrchestratorInput.page_processor_args")
@@ -142,7 +143,8 @@ class BatchProcessorContext:
 
     # The identifier for the batch, potentially across multiple workflows.
     # 
-    def get_batch_id(self) -> str:
+    @property
+    def batch_id(self) -> str:
         assert self._batch_id is not None, "You're getting the batch ID but didn't pass one in to BatchOrchestratorInput.batch_id."
         return self._batch_id
 
