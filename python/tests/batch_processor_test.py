@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sys
+from unittest.mock import AsyncMock
 try:
     from dataclasses import dataclass
     from typing import Any, Sequence
@@ -29,7 +30,7 @@ async def returns_cursor(context: BatchProcessorContext):
 @pytest.mark.asyncio
 async def test_page_processor():
     env = ActivityEnvironment()
-    result = await env.run(batch_orchestrator.process_page, returns_cursor.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
+    result = await env.run(process_page, returns_cursor.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
     assert result == "some_cursor"
 
 
@@ -61,7 +62,6 @@ expected_heartbeat_details = "signaled_next_page"
 
 def on_heartbeat(details):
     assert details == expected_heartbeat_details
-    
 
 @pytest.mark.asyncio
 async def test_heartbeat():
@@ -74,28 +74,28 @@ async def test_heartbeat():
 @pytest.mark.asyncio
 async def test_idempotency():
     # Simulate the first time the page is processed and we should signal the workflow
-    with patch.object(WorkflowHandle, 'signal') as signal_mock:
+    with patch.object(WorkflowHandle, 'signal', new_callable=AsyncMock) as signal_mock:
             env = ActivityEnvironment()
             result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
         
-            signal_mock.assert_called_once()
+            signal_mock.assert_awaited_once()
 
     # And the second time, we shouldn't.
-    with patch.object(WorkflowHandle, 'signal') as signal_mock, patch('temporalio.activity.info') as mock_activity_info:
+    with patch.object(WorkflowHandle, 'signal', new_callable=AsyncMock) as signal_mock, patch('temporalio.activity.info') as mock_activity_info:
             instance = mock_activity_info.return_value
             instance.heartbeat_details = [expected_heartbeat_details]
             env = ActivityEnvironment()
             result = await env.run(batch_orchestrator.process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
         
-            signal_mock.assert_not_called()
+            signal_mock.assert_not_awaited()
 
 @pytest.mark.asyncio
 async def test_extended_retry_does_not_resignal():
-    with patch.object(WorkflowHandle, 'signal') as signal_mock:
+    with patch.object(WorkflowHandle, 'signal', new_callable=AsyncMock) as signal_mock:
         env = ActivityEnvironment()
         # Pass in that we already signaled, so when the activity enqueues the new page, we ignore it.
         result = await env.run(process_page, starts_new_page.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", True)
-        signal_mock.assert_not_called()
+        signal_mock.assert_not_awaited()
 
 @page_processor
 async def attempts_to_signal_twice(context: BatchProcessorContext):
@@ -115,7 +115,7 @@ async def test_batch_id():
 
 @pytest.mark.asyncio
 async def test_cannot_enqueue_two_pages():
-    with patch.object(WorkflowHandle, 'signal') as signal_mock:
+    with patch.object(WorkflowHandle, 'signal', new_callable=AsyncMock) as signal_mock:
         env = ActivityEnvironment()
         try:
             # Pass in that we already signaled, so when the activity enqueues the new page, we ignore it.
@@ -124,7 +124,7 @@ async def test_cannot_enqueue_two_pages():
             assert str(e) == ("You cannot call enqueue_next_page twice in the same page_processor.  Each processed page " +
               "is responsible for enqueuing the following page.")
         else: 
-            raise ValueError("Should have received a BatchProcessorRetryableError exception which wraps the assertion.")
+            assert False, "Should have asserted preventing the user from calling enqueue_next_page twice."
 
 if __name__ == "__main__":
     pytest.main(sys.argv)
