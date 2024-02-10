@@ -29,9 +29,66 @@ from batch_orchestrator_data import BatchOrchestratorInput, BatchOrchestratorRes
 #   * Your main work will be to implement a @page_processor, so see batch_processor.py for more details.
 #   * All configuration and customization is passed in with BatchOrchestratorInput.
 
-# Paginates through a large dataset and executes it with controllable parallelism.  
+# Pages through a large dataset and executes it with controllable parallelism.  
 @workflow.defn
 class BatchOrchestrator:
+
+    # Run this to process a batch of work with controlled parallelism and in a fault-tolerant way.
+    # See the docs for BatchOrchestratorInput for customizations.
+    # You must add the 
+    # batch_orchestrator_data_converter to your client as follows:
+    # client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
+    # Then invoke it and await for it as you would any Temporal workflow, for example: 
+    # handle = await client.start_workflow(
+    #   BatchOrchestrator.run, 
+    #   BatchOrchestratorInput(
+    #     batch_id="my_batch_id", 
+    #     page_processor_name=my_page_processor.__name__, 
+    #     max_parallelism=5,
+    #     page_size=page_size), 
+    #   id=f"my_workflow_id-{str(uuid.uuid4())}", 
+    #   task_queue="my-task-queue")
+    # await handle.result()
+    @workflow.run
+    async def run(self, input: BatchOrchestratorInput) -> BatchOrchestratorResults:
+        self.run_init(input)
+
+        self.logger.info("Starting batch.")
+        self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
+        await self.page_queue.run()
+
+        if input.use_extended_retries and self.page_queue.tracker.to_retry_page_nums:
+            self.logger.info(
+                f"Moving to extended retries: {len(self.page_queue.tracker.to_retry_page_nums)} failed to process, " +
+                f"while {self.page_queue.tracker.num_pages_processed} processed successfully.")
+
+            self.page_queue.re_enqueue_pages_to_retry()
+            await self.page_queue.run()
+
+        self.logger.info(f"Batch executor completed {self.page_queue.tracker.num_pages_processed} pages")
+
+        return BatchOrchestratorResults(
+            num_pages_processed=self.page_queue.tracker.num_pages_processed,
+            max_parallelism_achieved=self.page_queue.tracker.max_parallelism_achieved,
+            num_failed_pages=len(self.page_queue.tracker.failed_page_nums))
+
+    # Query the current progress of the batch.  If you know how many records you have, you can even provide a progress bar.
+    # Invoke it as you would any Temporal query.  For example
+    # handle = await client.start_workflow(...) (as documented in the run method)
+    # progress = await handle.query(BatchOrchestrator.current_progress)
+    @workflow.query
+    def current_progress(self) -> BatchOrchestratorResults:
+        return BatchOrchestratorResults(
+            num_pages_processed=self.page_queue.tracker.num_pages_processed,
+            max_parallelism_achieved=self.page_queue.tracker.max_parallelism_achieved,
+            num_failed_pages=len(self.page_queue.tracker.failed_page_nums))
+
+    # Receives signals that new pages are ready to process and enqueues them.
+    # Don't call this directly; call context.enqueue_next_page() from your @page_processor.
+    @workflow.signal
+    async def _signal_add_page(self, page: BatchPage, page_num: int) -> None:
+        self.logger.info(f"Enqueuing {self.logger.describe_page(page_num, page)}.")
+        self.page_queue.enqueue_page(page, page_num)
 
     @dataclass(kw_only=True)
     class EnqueuedPage:
@@ -311,47 +368,10 @@ class BatchOrchestrator:
             else:
                 return self.input.initial_retry_policy
 
-    #
-    # Getting signals when new pages are queued for processing
-    #
-    @workflow.signal
-    async def signal_add_page(self, page: BatchPage, page_num: int) -> None:
-        self.logger.info(f"Enqueuing {self.logger.describe_page(page_num, page)}.")
-        self.page_queue.enqueue_page(page, page_num)
-
     def run_init(self, input: BatchOrchestratorInput) -> None:
         self.input = input
         self.logger = BatchOrchestrator.LoggerAdapter(input)
         self.page_queue = BatchOrchestrator.PageQueue(input, self.logger)
-
-    # The main algorithm
-    # First we enqueue the first page, then we wait for the queue to finish processing.
-    # Each page is retried according to initial_retry_policy, which is limited to a certain number of retries by default.
-    # We do this to avoid "gumming up the queue" with permanent failures, letting healthy pages through.
-    # Any pages that failed are put into "extended retries" and run the queue again to run until they're all done.
-    @workflow.run
-    async def run(self, input: BatchOrchestratorInput) -> BatchOrchestratorResults:
-        self.run_init(input)
-
-        self.logger.info("Starting batch.")
-        self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
-        await self.page_queue.run()
-
-        if input.use_extended_retries and self.page_queue.tracker.to_retry_page_nums:
-            self.logger.info(
-                f"Moving to extended retries: {len(self.page_queue.tracker.to_retry_page_nums)} failed to process, " +
-                f"while {self.page_queue.tracker.num_pages_processed} processed successfully.")
-
-            self.page_queue.re_enqueue_pages_to_retry()
-            await self.page_queue.run()
-
-
-        self.logger.info(f"Batch executor completed {self.page_queue.tracker.num_pages_processed} pages")
-
-        return BatchOrchestratorResults(
-            num_pages_processed=self.page_queue.tracker.num_pages_processed,
-            max_parallelism_achieved=self.page_queue.tracker.max_parallelism_achieved,
-            num_failed_pages=len(self.page_queue.tracker.failed_page_nums))
 
     class FailedBatchPage:
         def __init__(self, page_num: int, page: BatchPage, did_signal_next_page: bool, exception: BaseException) -> None:

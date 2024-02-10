@@ -32,12 +32,12 @@ It solves, or helps you solve, many problems that tend to come up for these case
 * Eliminates unevenly-sized pages without needing to first traverse the database to find the page boundaries.
 * Controllable parallelism to limit impact on downstream systems, including [coming soon] pauses and gradual rampups.
 * Retries, allowing designation of non-retryable exceptions.
+* Allows the caller to track progress.
 * Rich failure handling:
 ** Code deploys can fix your running batch without need for other remediations.
 ** It tracks failures for you
 ** It calls your handler when there are failures.
 ** [coming soon] Allows you to avoid head-of-line blocking.
-* [coming soon] Tracks progress
 
 Check out the ![samples](./python/samples/README.md) to get a better idea.
 

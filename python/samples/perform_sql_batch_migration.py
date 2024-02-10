@@ -1,3 +1,4 @@
+from asyncio import sleep
 import sys
 try:
     import asyncio
@@ -39,21 +40,36 @@ async def main(num_items):
     try:
         cursor = ""
 
-        print(f"Starting migration on {num_items} items.  Check your worker's output to see what's happening.")
+        print(f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail.")
         args = ConfigArgs(db_file=db_file.name)
+        page_size = 200
         # Execute the migration
-        result = await client.execute_workflow(
+        handle = await client.start_workflow(
             BatchOrchestrator.run, 
             BatchOrchestratorInput(
                 batch_id="inflate_product_prices", 
                 page_processor_name=inflate_product_prices.__name__, 
                 max_parallelism=5,
-                page_size=100,
+                page_size=page_size,
                 page_processor_args=args.to_json()), 
             id=f"inflate_product_prices-{str(uuid.uuid4())}", 
             task_queue="my-task-queue")
+        
+        # Suppose we want to track intermediate progress.  We can query the BatchOrchestrator for its current state.
+        time_slept = 0
+        while True:
+            await sleep(5)
+            time_slept += 5
+            interim_result = await handle.query(BatchOrchestrator.current_progress)
+            assert interim_result.num_pages_processed <= 1 + (num_items / page_size)
+            print(f"Current progress after {time_slept} seconds: {interim_result}")
+            if interim_result.num_pages_processed == 1 + (num_items / page_size):
+                break
 
-        print(f"Migration finished with {result.num_pages_processed} pages processed.  Max parallelism achieved: {result.max_parallelism_achieved}.")
+        result = await handle.result()
+
+        print(f"Migration finished after {time_slept} seconds with {result.num_pages_processed} pages processed.\n"+
+              f"Max parallelism achieved: {result.max_parallelism_achieved}.")
 
         # Verify that we adjusted the prices on all rows.
         db_connection = ProductDB.get_db_connection(db_file.name)
@@ -72,7 +88,7 @@ async def main(num_items):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table.")
-    parser.add_argument("--num_items", type=int, default=1000, help="The number of items to populate the table with and process.")
+    parser.add_argument("--num_items", type=int, default=2000, help="The number of items to populate the table with and process.")
     parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 1000>"
     args = parser.parse_args()
     asyncio.run(main(args.num_items))

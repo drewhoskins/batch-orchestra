@@ -428,11 +428,27 @@ async def test_logging(client: Client):
 
         # Now make sure the activity logs it
         activity_log = next(filter(lambda r: r.__dict__['msg'].startswith("I'm processing a page"), log_capture.records), None)
-        print("=================")
-        for log in log_capture.records:
-            print(log.__dict__['msg'])
         assert activity_log is not None
         assert activity_log.__dict__['batch_id'] == 'my_batch'
+
+@pytest.mark.asyncio
+async def test_current_progress_query(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_id='my_batch', 
+            page_processor_name=processes_n_items.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            first_cursor_str=default_cursor(),
+            page_processor_args=MyArgs(num_items_to_process=19).to_json())
+        handle = await client.start_workflow(
+            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        )
+        interim_result = await handle.query(BatchOrchestrator.current_progress)
+        assert interim_result.num_pages_processed in [0, 1, 2]
+        result = await handle.result()
+        assert result.num_pages_processed == 2
 
 if __name__ == "__main__":
     pytest.main(sys.argv)
