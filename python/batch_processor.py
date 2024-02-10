@@ -30,14 +30,14 @@ from temporalio.exceptions import ApplicationError
 
 # The Registry
 # You must declare your page processor functions with the @page_processor to allow the batch orchestrator to find them safely.
-page_processor_registry = {}
+_page_processor_registry = {}
 
 def page_processor(page_processor_function):
-    page_processor_registry[page_processor_function.__name__] = page_processor_function
+    _page_processor_registry[page_processor_function.__name__] = page_processor_function
     return page_processor_function
 
 def list_page_processors():
-    return list(page_processor_registry.keys())
+    return list(_page_processor_registry.keys())
 
 # In your batch jobs, you'll chunk them into pages of work that run in parallel with one another. 
 # Each page, represented by this class, processes in series.
@@ -50,7 +50,6 @@ class BatchPage:
     # The number of records to process.
     size: int
 
-
 # convert batchPageProcessorName to a function and call it with the page
 # Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
 @activity.defn
@@ -62,14 +61,14 @@ async def process_page(batch_page_processor_name: str, batch_id: Optional[str], 
         args=args,
         activity_info=activity.info(),
         did_signal_next_page=did_signal_next_page).async_init()
-    userProvidedActivity = page_processor_registry.get(batch_page_processor_name)
-    if not userProvidedActivity:
+    user_provided_page_processor = _page_processor_registry.get(batch_page_processor_name)
+    if not user_provided_page_processor:
         raise Exception(
             f"You passed batch processor name {batch_page_processor_name} into the BatchOrchestrator, but it was not registered on " +
-            f"your activity worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
+            f"your worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
             f"Available functions: {list_page_processors()}")
-    return await userProvidedActivity(context)
-    
+    return await user_provided_page_processor(context)
+
 class LoggerAdapter(activity.LoggerAdapter):
     def __init__(self, context: BatchProcessorContext) -> None:
         self._batch_id: Optional[str] = None
@@ -87,9 +86,21 @@ class LoggerAdapter(activity.LoggerAdapter):
                 kwargs['extra'] = extra_data
         return msg, kwargs
 
+class BatchProcessorContextBase:
+    def __init__(self, activity_info: activity.Info):
+        self._activity_info = activity_info
+        self._workflow_client: Optional[Client] = None
+        self._parent_workflow: Optional[WorkflowHandle] = None
 
+    async def async_init(self)-> BatchProcessorContextBase:
+        # TODO de-hardcode client URL
+        self._workflow_client = await Client.connect("localhost:7233")
+        self._parent_workflow = self._workflow_client.get_workflow_handle(
+            self._activity_info.workflow_id, run_id = self._activity_info.workflow_run_id)
+        return self
+        
 # This class is the only argument passed to your page processor function but contains everything you need.
-class BatchProcessorContext:
+class BatchProcessorContext(BatchProcessorContextBase):
 
     class NextPageSignaled(Enum):
         NOT_SIGNALED = 0
@@ -98,13 +109,11 @@ class BatchProcessorContext:
         PREVIOUS_RUN = 3
 
     def __init__(self, *, batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
+        super().__init__(activity_info)
         self._batch_id = batch_id
         self._page = page
         self._page_num = page_num
-        self._activity_info = activity_info
         self._args = args
-        self._workflow_client: Optional[Client] = None
-        self._parent_workflow: Optional[WorkflowHandle] = None
         self._logger = LoggerAdapter(self)
         if did_signal_next_page:
             self._next_page_signaled = BatchProcessorContext.NextPageSignaled.INITIAL_PHASE
@@ -117,14 +126,6 @@ class BatchProcessorContext:
     @property
     def logger(self):
         return self._logger
-
-    async def async_init(self)-> BatchProcessorContext:
-        # TODO add data converter just in case
-        self._workflow_client = await Client.connect("localhost:7233")
-        self._parent_workflow = self._workflow_client.get_workflow_handle(
-            self._activity_info.workflow_id, run_id = self._activity_info.workflow_run_id)
-
-        return self
 
     @property
     def page(self) -> BatchPage:

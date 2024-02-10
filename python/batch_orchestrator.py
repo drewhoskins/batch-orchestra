@@ -12,7 +12,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError
 
-from batch_processor import list_page_processors, page_processor_registry
+from batch_processor import list_page_processors
 from batch_processor import BatchPage, process_page
 from batch_orchestrator_data import BatchOrchestratorInput, BatchOrchestratorResults
 
@@ -67,10 +67,7 @@ class BatchOrchestrator:
 
         self.logger.info(f"Batch executor completed {self.page_queue.tracker.num_pages_processed} pages")
 
-        return BatchOrchestratorResults(
-            num_pages_processed=self.page_queue.tracker.num_pages_processed,
-            max_parallelism_achieved=self.page_queue.tracker.max_parallelism_achieved,
-            num_failed_pages=len(self.page_queue.tracker.failed_page_nums))
+        return self.current_progress()
 
     # Query the current progress of the batch.  If you know how many records you have, you can even provide a progress bar.
     # Invoke it as you would any Temporal query.  For example
@@ -81,7 +78,8 @@ class BatchOrchestrator:
         return BatchOrchestratorResults(
             num_pages_processed=self.page_queue.tracker.num_pages_processed,
             max_parallelism_achieved=self.page_queue.tracker.max_parallelism_achieved,
-            num_failed_pages=len(self.page_queue.tracker.failed_page_nums))
+            num_failed_pages=len(self.page_queue.tracker.failed_page_nums),
+            _start_timestamp=self.start_time.timestamp())
 
     # Receives signals that new pages are ready to process and enqueues them.
     # Don't call this directly; call context.enqueue_next_page() from your @page_processor.
@@ -372,3 +370,4 @@ class BatchOrchestrator:
         self.input = input
         self.logger = BatchOrchestrator.LoggerAdapter(input)
         self.page_queue = BatchOrchestrator.PageQueue(input, self.logger)
+        self.start_time = workflow.now()

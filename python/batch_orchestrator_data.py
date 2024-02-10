@@ -1,7 +1,7 @@
 from typing import Optional
 from dataclasses import dataclass, asdict
 import dataclasses
-from datetime import timedelta
+from datetime import datetime, timedelta
 import json
 from typing import Any, Dict, List, Optional, Set, Type
 
@@ -54,6 +54,11 @@ class BatchOrchestratorResults:
     # You can monitor this to ensure you are getting as much parallel processing as you hoped for.
     max_parallelism_achieved: int
     num_failed_pages: int
+    _start_timestamp: float
+
+    # The second when the BatchOrchestrator workflow began executing.
+    def start_time(self) -> datetime:
+        return datetime.fromtimestamp(self._start_timestamp)
 
 
 class BatchOrchestratorEncodingPayloadConverter(EncodingPayloadConverter):

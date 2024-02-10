@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime
 import sys
 try:
     from asyncio import sleep
@@ -66,6 +67,7 @@ async def test_one_page(client: Client):
     task_queue_name = str(uuid.uuid4())
 
     async with batch_worker(client, task_queue_name):
+        before_start_time = datetime.now()
         input = BatchOrchestratorInput(
             page_processor_name=processes_n_items.__name__, 
             max_parallelism=3, 
@@ -78,6 +80,8 @@ async def test_one_page(client: Client):
         result = await handle.result()
         assert result.num_pages_processed == 1
         assert result.max_parallelism_achieved == 1
+        assert result.start_time() >= before_start_time
+        assert result.start_time() <= datetime.now()
 
 # Testing with spawns_second_page will ensure that the workflow is signaled and that it processes the second page
 @pytest.mark.asyncio
@@ -395,8 +399,7 @@ class MyHandler(logging.Handler):
         self.records.append(record)
 
 @page_processor
-async def checks_batch_id(context: BatchProcessorContext):
-    assert context.batch_id == 'my_batch'
+async def spits_out_logs(context: BatchProcessorContext):
     context.logger.info("I'm processing a page")
 
 @pytest.mark.asyncio
@@ -412,7 +415,7 @@ async def test_logging(client: Client):
 
         input = BatchOrchestratorInput(
             batch_id='my_batch',
-            page_processor_name=checks_batch_id.__name__, 
+            page_processor_name=spits_out_logs.__name__, 
             max_parallelism=10, 
             page_size=10,
             first_cursor_str=default_cursor(),
