@@ -51,7 +51,7 @@ class BatchOrchestrator:
     # await handle.result()
     @workflow.run
     async def run(self, input: BatchOrchestratorInput) -> BatchOrchestratorResults:
-        self.run_init(input)
+        self._run_init(input)
 
         self.logger.info("Starting batch.")
         self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
@@ -368,14 +368,7 @@ class BatchOrchestrator:
             else:
                 return self.input.initial_retry_policy
 
-    def run_init(self, input: BatchOrchestratorInput) -> None:
+    def _run_init(self, input: BatchOrchestratorInput) -> None:
         self.input = input
         self.logger = BatchOrchestrator.LoggerAdapter(input)
         self.page_queue = BatchOrchestrator.PageQueue(input, self.logger)
-
-    class FailedBatchPage:
-        def __init__(self, page_num: int, page: BatchPage, did_signal_next_page: bool, exception: BaseException) -> None:
-            self.page_num = page_num
-            self.page = page
-            self.did_signal_next_page = did_signal_next_page
-            self.exception = exception

@@ -45,7 +45,7 @@ async def on_signal(
         arg: Any = temporalio.common._arg_unset,
         *,
         args: Sequence[Any]):
-    assert signal == "signal_add_page"
+    assert signal == "_signal_add_page"
     page = args[0]
     page_num = args[1]
     assert page.cursor_str == "some_cursor_the_second"

@@ -25,7 +25,7 @@ class BatchOrchestratorInput:
     # process within the page_timeout_seconds.
     page_size: int
     # Prepended to log messages to help you identify which batch is being processed.  Useful if the batch may requires
-    # multiple workflows (with separate workflow IDs) to process.  Defaults to the first workflow ID.
+    # multiple workflows (with separate workflow IDs) to process.
     batch_id: str = ''
     # The start_to_close_timeout of the activity that runs your page processor.
     # This should typically be within the drain allowance of the worker that runs your page processor.  That 
