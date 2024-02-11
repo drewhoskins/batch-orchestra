@@ -17,7 +17,7 @@ try:
     import batch_orchestrator
     from batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page
 except ModuleNotFoundError as e:
-    print("This script requires poetry.  Try `poetry run python ./tests/batch_orchestrator_test.py`.")
+    print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(f"Original error: {e}")
     sys.exit(1)
 

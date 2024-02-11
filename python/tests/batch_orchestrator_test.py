@@ -19,7 +19,7 @@ try:
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
     from batch_processor import BatchProcessorContext, page_processor
 except ModuleNotFoundError as e:
-    print("This script requires poetry.  Try `poetry run python ./tests/batch_orchestrator_test.py`.")
+    print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(f"Original error: {e}")
     sys.exit(1)
 
@@ -78,7 +78,7 @@ async def test_one_page(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 1
+        assert result.num_completed_pages == 1
         assert result.max_parallelism_achieved == 1
         assert result.start_time() >= before_start_time
         assert result.start_time() <= datetime.now()
@@ -98,7 +98,7 @@ async def test_two_pages(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 2 # 10 first page, 9 second
+        assert result.num_completed_pages == 2 # 10 first page, 9 second
         assert result.max_parallelism_achieved >= 1
 
 @page_processor
@@ -134,7 +134,7 @@ async def test_max_parallelism(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 6 # 5 pages * 10 + 1 page * 9
+        assert result.num_completed_pages == 6 # 5 pages * 10 + 1 page * 9
         # While not a rock-hard guarantee, max_parallelism should be achieved in practice because I'm sleeping within the activity
         assert result.max_parallelism_achieved == max_parallelism
 
@@ -153,7 +153,7 @@ async def test_page_size(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 10 # 9 pages * 5 items + 1 page with 4
+        assert result.num_completed_pages == 10 # 9 pages * 5 items + 1 page with 4
 
 @page_processor
 async def asserts_timeout(context: BatchProcessorContext):
@@ -177,7 +177,7 @@ async def test_timeout(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 1
+        assert result.num_completed_pages == 1
 
 did_attempt_fails_once = False
 @page_processor
@@ -203,7 +203,7 @@ async def test_extended_retries(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 1
+        assert result.num_completed_pages == 1
 
 @page_processor
 async def signals_same_page_infinitely(context: BatchProcessorContext):
@@ -224,7 +224,7 @@ async def test_ignores_subsequent_signals(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 2
+        assert result.num_completed_pages == 2
 
 did_attempt_fails_before_signal = False
 @page_processor
@@ -253,7 +253,7 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         result = await handle.result()
-        assert result.num_pages_processed == 2
+        assert result.num_completed_pages == 2
 
 did_attempt_fails_after_signal = False
 @page_processor
@@ -295,7 +295,7 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
         # We signal the orchestrator with a new page once during the initial retries.  Then when we restart the activity, 
         # we will use that info avoid signaling again.
         assert WorkflowHandle.signal.calls == 1
-        assert result.num_pages_processed == 2
+        assert result.num_completed_pages == 2
 
 class SomeNonRetryableException(Exception):
     pass
@@ -326,7 +326,7 @@ async def test_non_retryable_exceptions(client: Client):
         )
         result = await handle.result()
         assert call_count == 1
-        assert result.num_pages_processed == 0
+        assert result.num_completed_pages == 0
         assert result.num_failed_pages == 1
 
 @page_processor
@@ -353,7 +353,7 @@ async def test_non_retryable_application_error(client: Client):
         )
         result = await handle.result()
         assert call_count == 1
-        assert result.num_pages_processed == 0
+        assert result.num_completed_pages == 0
         assert result.num_failed_pages == 1
 
 did_attempt_times_out_first_time = False
@@ -387,7 +387,7 @@ async def test_timeout_then_extended_retry(client: Client):
         )
         result = await handle.result()
         assert call_count == 2
-        assert result.num_pages_processed == 1
+        assert result.num_completed_pages == 1
         assert result.num_failed_pages == 0
 
 class MyHandler(logging.Handler):
@@ -449,9 +449,9 @@ async def test_current_progress_query(client: Client):
             BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
         )
         interim_result = await handle.query(BatchOrchestrator.current_progress)
-        assert interim_result.num_pages_processed in [0, 1, 2]
+        assert interim_result.num_completed_pages in [0, 1, 2]
         result = await handle.result()
-        assert result.num_pages_processed == 2
+        assert result.num_completed_pages == 2
 
 if __name__ == "__main__":
     pytest.main(sys.argv)

@@ -48,13 +48,20 @@ class BatchOrchestratorInput:
     # By default, retry every five minutes in perpetuity.
     extended_retry_interval_seconds: int = 300
 
+# Provides a snapshot of how many pages the orchestrator has processed.  You can get this information in two ways.
+# 1. You can [query](https://docs.temporal.io/dev-guide/python/features#send-query) the get_progress method on the BatchOrchestrator workflow handle from any client.
+# 2. You can define a @batch_tracker callback and provide it in BatchOrchestratorInput.  The workflow will periodically
+#    call your tracker.
 @dataclass
-class BatchOrchestratorResults:
-    num_pages_processed: int
-    # You can monitor this to ensure you are getting as much parallel processing as you hoped for.
-    max_parallelism_achieved: int
+class BatchOrchestratorProgress:
+    # Pages which are failing to process but are still being retried.
+    num_stuck_pages: int    
+    num_completed_pages: int
+    # Pages which have permanently failed (perhaps because they raised a non_retryable error).
     num_failed_pages: int
     _start_timestamp: float
+    # You can monitor this to ensure you are getting as much parallel processing as you hoped for.
+    max_parallelism_achieved: int
 
     # The second when the BatchOrchestrator workflow began executing.
     def start_time(self) -> datetime:

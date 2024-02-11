@@ -10,7 +10,7 @@ from temporalio.exceptions import ApplicationError
 
 from batch_processor import BatchProcessorContextBase
 
-from batch_orchestrator_data import BatchOrchestratorResults
+from batch_orchestrator_data import BatchOrchestratorProgress
 
 _batch_tracker_registry = {}
 def batch_tracker(on_stuck_pages_handler_function):
@@ -26,7 +26,7 @@ class BatchTrackerKeepPolling(Exception):
     pass
 
 @activity.defn
-async def track_batch_progress(batch_tracker_name: str, batch_id: Optional[str], args: Optional[str], current_status: BatchOrchestratorResults) -> None:
+async def track_batch_progress(batch_tracker_name: str, batch_id: Optional[str], args: Optional[str], current_status: BatchOrchestratorProgress) -> None:
     user_provided_batch_tracker = _batch_tracker_registry.get(batch_tracker_name)
     if not user_provided_batch_tracker:
         raise Exception(
@@ -43,14 +43,14 @@ async def track_batch_progress(batch_tracker_name: str, batch_id: Optional[str],
     raise BatchTrackerKeepPolling()
 
 class BatchTrackerContext(BatchProcessorContextBase):
-    def __init__(self, *, batch_id: Optional[str], current_status: BatchOrchestratorResults, args: Optional[str], activity_info: activity.Info):
+    def __init__(self, *, batch_id: Optional[str], current_status: BatchOrchestratorProgress, args: Optional[str], activity_info: activity.Info):
         super().__init__(activity_info)
         self._batch_id = batch_id
         self._args = args
         self._current_status = current_status
 
     @property
-    def current_status(self) -> BatchOrchestratorResults:
+    def current_status(self) -> BatchOrchestratorProgress:
         return self._current_status
 
     @property

@@ -61,14 +61,14 @@ async def main(num_items):
             await sleep(5)
             time_slept += 5
             interim_result = await handle.query(BatchOrchestrator.current_progress)
-            assert interim_result.num_pages_processed <= 1 + (num_items / page_size)
+            assert interim_result.num_completed_pages <= 1 + (num_items / page_size)
             print(f"Current progress after {time_slept} seconds: {interim_result}")
-            if interim_result.num_pages_processed == 1 + (num_items / page_size):
+            if interim_result.num_completed_pages == 1 + (num_items / page_size):
                 break
 
         result = await handle.result()
 
-        print(f"Migration finished after {time_slept} seconds with {result.num_pages_processed} pages processed.\n"+
+        print(f"Migration finished after {time_slept} seconds with {result.num_completed_pages} pages processed.\n"+
               f"Max parallelism achieved: {result.max_parallelism_achieved}.")
 
         # Verify that we adjusted the prices on all rows.

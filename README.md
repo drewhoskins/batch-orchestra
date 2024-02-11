@@ -45,9 +45,12 @@ Check out the ![samples](./python/samples/README.md) to get a better idea.
 Early, users who already use Temporal or are interested in setting up Temporal for their business will be the most interested.  
 Please reach out if have thoughts on how this compares to the state of the art in any given language.
 
-## What are its limitations?
-* It doesn't natively support chaining operations together, which limits the complexity of individual operations you'd want to run through this framework.
-* It's not designed for big data transformations.  If your input and output are both columnar database tables, this is not for you.
+## What are the caveats?
+Think about the operation you want to apply to each item in your data set.
+* If it's "cheap" per-item, this framework will be overkill.  i.e. if you can do big multi-sets, or your input and output are both columnar database tables, there
+will be more efficient algorithms to use.
+* If it's complex, this framework can work, but it does not help you track the state transitions or dependencies within the operation, so code carefully.
+* If it's non-idempotent, you won't be able to safely reuse the retrying functionality of this framework.
 
 # Architecture:
 ![Alt text](architecture_diagram.png "Architecture Diagram") 
