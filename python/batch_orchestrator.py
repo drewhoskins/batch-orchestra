@@ -10,7 +10,7 @@ import inflect
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError, CancelledError
 
 from batch_processor import list_page_processors
 from batch_processor import BatchPage, process_page
@@ -70,6 +70,8 @@ class BatchOrchestrator:
 
         self.logger.info(f"Batch executor completed {self.page_queue.page_tracker.num_completed_pages} pages")
 
+        self.page_queue.page_tracker.on_finished()
+        await self.finalize_progress_tracker()
         return self.current_progress()
 
     # Query the current progress of the batch.  If you know how many records you have, you can even provide a progress bar.
@@ -84,6 +86,7 @@ class BatchOrchestrator:
             num_processing_pages=self.page_queue.page_tracker.num_processing_pages,
             num_stuck_pages=len(self.page_queue.page_tracker.stuck_page_nums),
             num_failed_pages=len(self.page_queue.page_tracker.failed_page_nums),
+            is_finished=self.page_queue.page_tracker.is_finished,
             _start_timestamp=self.start_time.timestamp())
 
     # Receives signals that new pages are ready to process and enqueues them.
@@ -94,15 +97,33 @@ class BatchOrchestrator:
         self.page_queue.enqueue_page(page, page_num)
 
     # Starts a user-specified background activity to track the progress of the batch.
-    def start_progress_tracker(self) -> None:
-        self.progress_tracker: Optional[Future[None]] = None
+    def start_progress_tracker(self) -> Optional[Future[None]]:
+        self._progress_tracker: Optional[Future[None]] = None
         if self.input.batch_tracker_name is not None:
-            self.progress_tracker = workflow.start_activity(
+            self._progress_tracker = workflow.start_activity(
                 track_batch_progress, 
                 args=[self.input.batch_tracker_name, self.input.batch_id, self.input.batch_tracker_args], 
                 start_to_close_timeout=timedelta(seconds=self.input.batch_tracker_timeout_seconds),
                 retry_policy=RetryPolicy(backoff_coefficient=1, initial_interval=timedelta(seconds=self.input.batch_tracker_polling_interval_seconds))
                 )
+        return self._progress_tracker
+    
+    # Call once more when we're finished.
+    async def finalize_progress_tracker(self) -> None:
+        if self._progress_tracker is not None:
+            # Cancel so that we don't have to wait for the next polling interval before exiting the workflow.
+            self._progress_tracker.cancel()
+            try:
+                await self._progress_tracker
+            except ActivityError as e:
+                if isinstance(e.__cause__, CancelledError):
+                    self.logger.info("Progress tracker was cancelled.")
+                    # Now invoke the tracker one last time (without polling) so the developer can get a final update.
+                    tracker_future = self.start_progress_tracker()
+                    assert tracker_future is not None
+                    await tracker_future
+                else:
+                    raise e
 
     @dataclass(kw_only=True)
     class EnqueuedPage:
@@ -191,6 +212,7 @@ class BatchOrchestrator:
                 self._processing_page_nums: Set[int] = set()
                 self._stuck_page_nums: Set[int] = set()
                 self._failed_page_nums: Set[int] = set()
+                self._is_finished: bool = False
 
             #
             # Status fields
@@ -243,6 +265,10 @@ class BatchOrchestrator:
             @property
             def max_parallelism_achieved(self) -> int:
                 return self._max_parallelism_achieved
+            
+            @property
+            def is_finished(self) -> bool:
+                return self._is_finished
 
             # 
             # Triggers to track changes
@@ -259,20 +285,28 @@ class BatchOrchestrator:
                 self._max_parallelism_achieved = max(self._max_parallelism_achieved, self.num_processing_pages)
 
             def on_page_completed(self, page_num: int) -> None:
+                assert page_num in self._processing_page_nums
                 if page_num in self._stuck_page_nums:
                     self._stuck_page_nums.remove(page_num)
-                self._num_completed_pages += 1
                 self._processing_page_nums.remove(page_num)
+                self._num_completed_pages += 1
 
             def on_page_got_stuck(self, page_num: int) -> None:
-                self._stuck_page_nums.add(page_num)
+                assert page_num in self._processing_page_nums
                 self._processing_page_nums.remove(page_num)
+                self._stuck_page_nums.add(page_num)
 
             def on_page_failed(self, page_num: int) -> None:
+                assert page_num in self._processing_page_nums
                 self._processing_page_nums.remove(page_num)
                 self._failed_page_nums.add(page_num)
-                
-            
+
+            def on_finished(self) -> None:
+                assert not self._processing_page_nums
+                assert not self._stuck_page_nums
+                assert not self._pending_page_nums
+                self._is_finished = True
+                            
         def __init__(self, input: BatchOrchestratorInput, logger: BatchOrchestrator.LoggerAdapter) -> None:
             self.input = input
             self.page_tracker = BatchOrchestrator.PageQueue.PageTracker(self.input.max_parallelism)

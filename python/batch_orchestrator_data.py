@@ -67,6 +67,7 @@ class BatchOrchestratorProgress:
     num_completed_pages: int
     # Pages which have permanently failed (perhaps because they raised a non_retryable error).
     num_failed_pages: int
+    is_finished: bool
     _start_timestamp: float
     # You can monitor this to ensure you are getting as much parallel processing as you hoped for.
     max_parallelism_achieved: int

@@ -83,6 +83,7 @@ async def test_one_page(client: Client):
         result = await handle.result()
         assert result.num_completed_pages == 1
         assert result.max_parallelism_achieved == 1
+        assert result.is_finished
         assert result.start_time() >= before_start_time
         assert result.start_time() <= datetime.now()
 
@@ -101,6 +102,8 @@ async def test_two_pages(client: Client):
         result = await handle.result()
         assert result.num_completed_pages == 2 # 10 first page, 9 second
         assert result.max_parallelism_achieved >= 1
+        assert result.is_finished
+
 
 @page_processor
 async def processes_n_items(context: BatchProcessorContext):

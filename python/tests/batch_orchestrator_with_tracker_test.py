@@ -87,34 +87,69 @@ async def my_tracker(context: BatchTrackerContext):
     global my_tracker_progresses
     my_tracker_progresses.append(context.progress)
 
+async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput)-> WorkflowHandle:
+    return await client.start_workflow(
+        BatchOrchestrator.run, # type: ignore (unclear why this is necessary, but mypy complains without it.)
+        input, id=str(uuid.uuid4()), task_queue=task_queue_name)
+
+
 @pytest.mark.asyncio
 async def test_tracking_polls(client: Client):
     task_queue_name = str(uuid.uuid4())
+    global my_tracker_progresses
+    my_tracker_progresses = []
+
+    async with batch_worker(client, task_queue_name):
+
+        input = BatchOrchestratorInput(
+            page_processor_name=fails_first_n_tries.__name__, 
+            max_parallelism=3, 
+            page_size=10,
+            page_processor_args=MyArgs(fail_until_i=5).to_json(),
+            initial_retry_policy=RetryPolicy(maximum_attempts=2),
+            extended_retry_interval_seconds=1,
+            first_cursor_str=default_cursor(),
+            batch_tracker_name=my_tracker.__name__,
+            batch_tracker_args=MyBatchTrackerArgs(some_value="thingy").to_json(),
+            batch_tracker_polling_interval_seconds=1 # unreasonably short for testing
+            )
+        handle = await start_orchestrator(client, task_queue_name, input)
+        result = await handle.result()
+        assert result.num_completed_pages == 1
+        assert result.num_failed_pages == 0
+
+        # Ensure that the tracker polls, not just getting called once at the beginning and end
+        assert len(my_tracker_progresses) >= 3
+        evidence_of_stuck_page = next((p for p in my_tracker_progresses if p.num_stuck_pages > 0), None)
+        assert evidence_of_stuck_page is not None
+        assert my_tracker_progresses[-1].is_finished
+
+@pytest.mark.asyncio
+async def test_tracker_can_be_canceled(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    global my_tracker_progresses
+    my_tracker_progresses = []
 
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             page_processor_name=fails_first_n_tries.__name__, 
             max_parallelism=3, 
             page_size=10,
-            page_processor_args=MyArgs(fail_until_i=6).to_json(),
-            initial_retry_policy=RetryPolicy(maximum_attempts=2),
+            page_processor_args=MyArgs(fail_until_i=0).to_json(),
             extended_retry_interval_seconds=2,
             first_cursor_str=default_cursor(),
             batch_tracker_name=my_tracker.__name__,
             batch_tracker_args=MyBatchTrackerArgs(some_value="thingy").to_json(),
-            batch_tracker_polling_interval_seconds=1 # unreasonably short for testing
+            batch_tracker_polling_interval_seconds=60 # longer than the test should take, cancel should interrupt
             )
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
+        assert result.is_finished
         assert result.num_completed_pages == 1
         assert result.num_failed_pages == 0
 
-        # Ensure that the tracker polls, not just getting called once.
-        global my_tracker_progresses
-        print('--------------------------------------------------------')
-        print(my_tracker_progresses)
-        assert len(my_tracker_progresses) >= 2
-        evidence_of_stuck_page = next((p for p in my_tracker_progresses if p.num_stuck_pages > 0), None)
-        assert evidence_of_stuck_page is not None
+        # Ensure that the tracker gets called on startup and teardown, but we should
+        # cancel before it retries after polling.
+        assert len(my_tracker_progresses) == 2
+        assert not my_tracker_progresses[0].is_finished
+        assert my_tracker_progresses[1].is_finished

@@ -38,8 +38,9 @@ async def track_batch_progress(batch_tracker_name: str, batch_id: Optional[str],
         args=args, 
         activity_info=activity.info()).async_init()
     await user_provided_batch_tracker(context)
-    # Ensures that we'll periodically wake up to check the batch's progress
-    raise BatchTrackerKeepPolling()
+    if not context.progress.is_finished:
+        # Ensures that we'll periodically wake up to check the batch's progress
+        raise BatchTrackerKeepPolling()
 
 class BatchTrackerContext(BatchProcessorContextBase):
     def __init__(self, *, batch_id: Optional[str], args: Optional[str], activity_info: activity.Info):
