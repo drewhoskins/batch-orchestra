@@ -28,8 +28,8 @@ def notify_tired_engineer(batch_id: str, num_stuck_pages: int):
 
 @batch_tracker
 async def polls_for_stuck_pages(context: BatchTrackerContext):
-    if context.current_status.num_stuck_pages > 0:
-        notify_tired_engineer(context.batch_id, context.current_status.num_stuck_pages)
+    if context.progress.num_stuck_pages > 0:
+        notify_tired_engineer(context.batch_id, context.progress.num_stuck_pages)
 
 # Trackers run periodically and allow the user to take action on the batch's progress, such as polling
 # for stuck pages and notifying an engineer, or checking for elapsed time.
@@ -37,10 +37,10 @@ async def polls_for_stuck_pages(context: BatchTrackerContext):
 async def test_stuck_page_tracker():
     with patch('batch_tracker_test.notify_tired_engineer') as notify_mock:
         env = ActivityEnvironment()
-        current_status = BatchOrchestratorProgress(num_completed_pages=0, num_stuck_pages=1, max_parallelism_achieved=1, num_failed_pages=0, _start_timestamp=datetime.now().timestamp())
+        current_status = BatchOrchestratorProgress(num_completed_pages=0, num_stuck_pages=1, num_processing_pages=1, max_parallelism_achieved=1, num_failed_pages=0, _start_timestamp=datetime.now().timestamp())
         got_polling_exception = False
         try:
-            await env.run(track_batch_progress, polls_for_stuck_pages.__name__, 'my_batch_id', None, current_status)
+            await env.run(track_batch_progress, polls_for_stuck_pages.__name__, 'my_batch_id', None)
         except BatchTrackerKeepPolling as e:
             notify_mock.assert_called_once_with('my_batch_id', 1)
         else:
@@ -52,7 +52,7 @@ def notify_that_batch_is_past_slo(batch_id: str):
 @batch_tracker
 async def tracks_batch_taking_too_long(context: BatchTrackerContext):
     now = datetime.now()
-    if now - context.current_status.start_time() > timedelta(hours=1):
+    if now - context.progress.start_time() > timedelta(hours=1):
         notify_that_batch_is_past_slo(context.batch_id)
 
 @pytest.mark.asyncio
@@ -65,11 +65,12 @@ async def test_elapsed_time_tracker():
         current_status = BatchOrchestratorProgress(
             num_completed_pages=5, 
             num_stuck_pages=0,
+            num_processing_pages=1,
             num_failed_pages=0, 
             max_parallelism_achieved=3, 
             _start_timestamp=then.timestamp())
         try:
-            await env.run(track_batch_progress, tracks_batch_taking_too_long.__name__, 'my_batch_id', None, current_status)
+            await env.run(track_batch_progress, tracks_batch_taking_too_long.__name__, 'my_batch_id', None)
         except BatchTrackerKeepPolling as e:
             notify_mock.assert_not_called()
         else:
@@ -80,11 +81,12 @@ async def test_elapsed_time_tracker():
         current_status = BatchOrchestratorProgress(
             num_completed_pages=5, 
             max_parallelism_achieved=3, 
+            num_processing_pages=1,
             num_failed_pages=0,
             num_stuck_pages=0,
             _start_timestamp=then.timestamp())
         try:
-            await env.run(track_batch_progress, tracks_batch_taking_too_long.__name__, 'my_batch_id', None, current_status)
+            await env.run(track_batch_progress, tracks_batch_taking_too_long.__name__, 'my_batch_id', None)
         except BatchTrackerKeepPolling as e:
             notify_mock.assert_called_once_with('my_batch_id')
         else:

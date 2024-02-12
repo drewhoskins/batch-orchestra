@@ -64,7 +64,7 @@ async def process_page(batch_page_processor_name: str, batch_id: Optional[str], 
     user_provided_page_processor = _page_processor_registry.get(batch_page_processor_name)
     if not user_provided_page_processor:
         raise Exception(
-            f"You passed batch processor name {batch_page_processor_name} into the BatchOrchestrator, but it was not registered on " +
+            f"You passed page_processor_name '{batch_page_processor_name}' into the BatchOrchestrator, but it was not registered on " +
             f"your worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
             f"Available functions: {list_page_processors()}")
     return await user_provided_page_processor(context)

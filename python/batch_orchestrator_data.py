@@ -24,6 +24,16 @@ class BatchOrchestratorInput:
     # The number of items per page, to process in series.  Choose an amount that you can comfortably
     # process within the page_timeout_seconds.
     page_size: int
+    # Global arguments to pass into each page processor, such as configuration.  Many folks will use json to serialize.
+    # Any arguments that need to vary per page should be included in your cursor.
+    page_processor_args: Optional[str] = None
+    # A batch tracker is called periodically with a BatchOrchestratorProgress object.  You could, for example, use it 
+    # to notify somebody of stuck pages or to check if the batch is taking too long.
+    batch_tracker_name: Optional[str] = None
+    # Global arguents to pass into your batch tracker, such as configuration.  Many folks will use json to serialize.
+    batch_tracker_args: Optional[str] = None
+    batch_tracker_polling_interval_seconds: int = 300
+    batch_tracker_timeout_seconds: int = 270 # less than the polling interval
     # Prepended to log messages to help you identify which batch is being processed.  Useful if the batch may requires
     # multiple workflows (with separate workflow IDs) to process.
     batch_id: str = ''
@@ -36,9 +46,6 @@ class BatchOrchestratorInput:
     # you are dividing up a large dataset into multiple batches.
     # When sdk-python supports generics, we can add support for (serializable) cursor types here.
     first_cursor_str: str = ""
-    # Global arguments to pass into each page processor, such as configuration.  Many will use json to serialize.
-    # Any arguments that need to vary per page should be included in your cursor.
-    page_processor_args: Optional[str] = None
     # By default we retry ten times with exponential backoff, and then if it's still failing, we'll kick
     # it to the extended retry queue which will continue to retry indefinitely once the working pages are finished.
     # This is to avoid the queue--which maxes out at max_parallelism concurrent page processors--getting filled up
@@ -56,6 +63,7 @@ class BatchOrchestratorInput:
 class BatchOrchestratorProgress:
     # Pages which are failing to process but are still being retried.
     num_stuck_pages: int    
+    num_processing_pages: int
     num_completed_pages: int
     # Pages which have permanently failed (perhaps because they raised a non_retryable error).
     num_failed_pages: int
