@@ -1,5 +1,4 @@
 from __future__ import annotations
-from datetime import datetime
 import sys
 try:
     from asyncio import sleep
@@ -9,6 +8,7 @@ try:
     from unittest.mock import patch
     import pytest
     import uuid
+    from datetime import datetime
 
     from temporalio.common import RetryPolicy
     from temporalio.client import Client, WorkflowHandle
@@ -22,6 +22,11 @@ except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(f"Original error: {e}")
     sys.exit(1)
+
+async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput)-> WorkflowHandle:
+    return await client.start_workflow(
+        BatchOrchestrator.run, # type: ignore (unclear why this is necessary, but mypy complains without it.)
+        input, id=str(uuid.uuid4()), task_queue=task_queue_name)
 
 @dataclass
 class MyCursor:
@@ -74,9 +79,7 @@ async def test_one_page(client: Client):
             page_size=10,
             first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_items_to_process=1).to_json())
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 1
         assert result.max_parallelism_achieved == 1
@@ -94,9 +97,7 @@ async def test_two_pages(client: Client):
             page_size=10,
             first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_items_to_process=19).to_json())
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 2 # 10 first page, 9 second
         assert result.max_parallelism_achieved >= 1
@@ -130,8 +131,9 @@ async def test_max_parallelism(client: Client):
             page_size=10,
             first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_items_to_process=59).to_json())
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        handle = await client.start_workflow( 
+            BatchOrchestrator.run, # type: ignore
+            input, id=str(uuid.uuid4()), task_queue=task_queue_name
         )
         result = await handle.result()
         assert result.num_completed_pages == 6 # 5 pages * 10 + 1 page * 9
@@ -150,7 +152,8 @@ async def test_page_size(client: Client):
             first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_items_to_process=49).to_json())
         handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+            BatchOrchestrator.run, # type: ignore
+            input, id=str(uuid.uuid4()), task_queue=task_queue_name
         )
         result = await handle.result()
         assert result.num_completed_pages == 10 # 9 pages * 5 items + 1 page with 4
@@ -173,8 +176,9 @@ async def test_timeout(client: Client):
             page_timeout_seconds=123,
             first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_items_to_process=49).to_json())
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+        handle = await client.start_workflow( 
+            BatchOrchestrator.run, # type: ignore
+            input, id=str(uuid.uuid4()), task_queue=task_queue_name
         )
         result = await handle.result()
         assert result.num_completed_pages == 1
@@ -200,7 +204,8 @@ async def test_extended_retries(client: Client):
             # extended retries should pick it up.
             initial_retry_policy=RetryPolicy(maximum_attempts=1))
         handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
+            BatchOrchestrator.run, # type: ignore
+            input, id=str(uuid.uuid4()), task_queue=task_queue_name
         )
         result = await handle.result()
         assert result.num_completed_pages == 1
@@ -220,9 +225,7 @@ async def test_ignores_subsequent_signals(client: Client):
             max_parallelism=3,
             page_size=10,
             first_cursor_str="page one")
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 2
 
@@ -249,9 +252,7 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
             first_cursor_str="page one",
             # one try so extended retries should pick it up immediately.
             initial_retry_policy=RetryPolicy(maximum_attempts=1))
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 2
 
@@ -288,9 +289,7 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
             first_cursor_str="page one",
             # one try so extended retries should pick it up immediately.
             initial_retry_policy=RetryPolicy(maximum_attempts=1))
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         # We signal the orchestrator with a new page once during the initial retries.  Then when we restart the activity, 
         # we will use that info avoid signaling again.
@@ -321,9 +320,7 @@ async def test_non_retryable_exceptions(client: Client):
             page_size=10,
             first_cursor_str="page one",
             initial_retry_policy=RetryPolicy(non_retryable_error_types=['SomeNonRetryableException']))
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert call_count == 1
         assert result.num_completed_pages == 0
@@ -348,9 +345,7 @@ async def test_non_retryable_application_error(client: Client):
             max_parallelism=3, 
             page_size=10,
             first_cursor_str="page one")
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert call_count == 1
         assert result.num_completed_pages == 0
@@ -382,9 +377,7 @@ async def test_timeout_then_extended_retry(client: Client):
             page_timeout_seconds=1, # Very aggressive to induce a timeout
             first_cursor_str="page one",
             initial_retry_policy=RetryPolicy(maximum_attempts=1))
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert call_count == 2
         assert result.num_completed_pages == 1
@@ -420,9 +413,7 @@ async def test_logging(client: Client):
             page_size=10,
             first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_items_to_process=19).to_json())
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         # Make sure workflow logs the batch ID.
         first_log = log_capture.records[0].__dict__
@@ -445,9 +436,7 @@ async def test_current_progress_query(client: Client):
             page_size=10,
             first_cursor_str=default_cursor(),
             page_processor_args=MyArgs(num_items_to_process=19).to_json())
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, id=str(uuid.uuid4()), arg=input, task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         interim_result = await handle.query(BatchOrchestrator.current_progress)
         assert interim_result.num_completed_pages in [0, 1, 2]
         result = await handle.result()
