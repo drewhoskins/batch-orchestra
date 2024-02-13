@@ -102,17 +102,19 @@ async def test_tracking_polls(client: Client):
     async with batch_worker(client, task_queue_name):
 
         input = BatchOrchestratorInput(
-            page_processor_name=fails_first_n_tries.__name__, 
             max_parallelism=3, 
-            page_size=10,
-            page_processor_args=MyArgs(fail_until_i=5).to_json(),
-            initial_retry_policy=RetryPolicy(maximum_attempts=2),
-            extended_retry_interval_seconds=1,
-            first_cursor_str=default_cursor(),
-            batch_tracker_name=my_tracker.__name__,
-            batch_tracker_args=MyBatchTrackerArgs(some_value="thingy").to_json(),
-            batch_tracker_polling_interval_seconds=1 # unreasonably short for testing
-            )
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=fails_first_n_tries.__name__,
+                args=MyArgs(fail_until_i=5).to_json(),
+                initial_retry_policy=RetryPolicy(maximum_attempts=2),
+                extended_retry_interval_seconds=1,
+                first_cursor_str=default_cursor(),
+                page_size=10),
+            batch_tracker=BatchOrchestratorInput.BatchTrackerContext(
+                name=my_tracker.__name__,
+                args=MyBatchTrackerArgs(some_value="thingy").to_json(),
+                polling_interval_seconds=1 # unreasonably short for testing
+            ))
         handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 1
@@ -132,16 +134,18 @@ async def test_tracker_can_be_canceled(client: Client):
 
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            page_processor_name=fails_first_n_tries.__name__, 
-            max_parallelism=3, 
-            page_size=10,
-            page_processor_args=MyArgs(fail_until_i=0).to_json(),
-            extended_retry_interval_seconds=2,
-            first_cursor_str=default_cursor(),
-            batch_tracker_name=my_tracker.__name__,
-            batch_tracker_args=MyBatchTrackerArgs(some_value="thingy").to_json(),
-            batch_tracker_polling_interval_seconds=60 # longer than the test should take, cancel should interrupt
-            )
+            max_parallelism=3,
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=fails_first_n_tries.__name__,
+                page_size=10,
+                args=MyArgs(fail_until_i=0).to_json(),
+                extended_retry_interval_seconds=2,
+                first_cursor_str=default_cursor()),
+            batch_tracker=BatchOrchestratorInput.BatchTrackerContext(
+                name=my_tracker.__name__,
+                args=MyBatchTrackerArgs(some_value="thingy").to_json(),
+                polling_interval_seconds=60 # longer than the test should take, cancel should interrupt
+            ))
         handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.is_finished

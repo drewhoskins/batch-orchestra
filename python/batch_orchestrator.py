@@ -57,10 +57,10 @@ class BatchOrchestrator:
         self.start_progress_tracker()
 
         self.logger.info("Starting batch.")
-        self.page_queue.enqueue_page(BatchPage(input.first_cursor_str, input.page_size), 0)
+        self.page_queue.enqueue_page(BatchPage(input.page_processor.first_cursor_str, input.page_processor.page_size), 0)
         await self.page_queue.run()
 
-        if input.use_extended_retries and self.page_queue.page_tracker.stuck_page_nums:
+        if input.page_processor.use_extended_retries and self.page_queue.page_tracker.stuck_page_nums:
             self.logger.info(
                 f"Moving to extended retries: {len(self.page_queue.page_tracker.stuck_page_nums)} pages are stuck, " +
                 f"while {self.page_queue.page_tracker.num_completed_pages} processed successfully.")
@@ -99,12 +99,12 @@ class BatchOrchestrator:
     # Starts a user-specified background activity to track the progress of the batch.
     def start_progress_tracker(self) -> Optional[Future[None]]:
         self._progress_tracker: Optional[Future[None]] = None
-        if self.input.batch_tracker_name is not None:
+        if self.input.batch_tracker is not None:
             self._progress_tracker = workflow.start_activity(
                 track_batch_progress, 
-                args=[self.input.batch_tracker_name, self.input.batch_id, self.input.batch_tracker_args], 
-                start_to_close_timeout=timedelta(seconds=self.input.batch_tracker_timeout_seconds),
-                retry_policy=RetryPolicy(backoff_coefficient=1, initial_interval=timedelta(seconds=self.input.batch_tracker_polling_interval_seconds))
+                args=[self.input.batch_tracker.name, self.input.batch_id, self.input.batch_tracker.args], 
+                start_to_close_timeout=timedelta(seconds=self.input.batch_tracker.timeout_seconds),
+                retry_policy=RetryPolicy(backoff_coefficient=1, initial_interval=timedelta(seconds=self.input.batch_tracker.polling_interval_seconds))
                 )
         return self._progress_tracker
     
@@ -345,7 +345,7 @@ class BatchOrchestrator:
                 if exception.non_retryable:
                     return True
                 users_exception_type_str = exception.type
-                return users_exception_type_str in (self.input.initial_retry_policy.non_retryable_error_types or set())
+                return users_exception_type_str in (self.input.page_processor.initial_retry_policy.non_retryable_error_types or set())
             else:
                 return False
 
@@ -384,7 +384,6 @@ class BatchOrchestrator:
                 self.pages[page_num].set_processing_finished()
                 self.page_tracker.on_page_completed(page_num)
 
-
         # Initiate processing the page and register a callback to record that it finished
         def start_page_processor_activity(self, enqueued_page: BatchOrchestrator.EnqueuedPage) -> None:
             page = enqueued_page.page
@@ -392,8 +391,8 @@ class BatchOrchestrator:
             already_tried = enqueued_page.phase == BatchOrchestrator.EnqueuedPage.Phase.PENDING_EXTENDED_RETRIES
             future = workflow.start_activity(
                 process_page, 
-                args=[self.input.page_processor_name, self.input.batch_id, page, page_num, self.input.page_processor_args, enqueued_page.did_signal_next_page], 
-                start_to_close_timeout=timedelta(seconds=self.input.page_timeout_seconds),
+                args=[self.input.page_processor.name, self.input.batch_id, page, page_num, self.input.page_processor.args, enqueued_page.did_signal_next_page], 
+                start_to_close_timeout=timedelta(seconds=self.input.page_processor.timeout_seconds),
                 retry_policy=self._build_retry_policy(already_tried)
                 )
             future.add_done_callback(
@@ -418,12 +417,12 @@ class BatchOrchestrator:
             if is_extended_retries:
                 return RetryPolicy(
                     backoff_coefficient=1.0,
-                    initial_interval=timedelta(seconds=self.input.extended_retry_interval_seconds),
-                    non_retryable_error_types=self.input.initial_retry_policy.non_retryable_error_types,
+                    initial_interval=timedelta(seconds=self.input.page_processor.extended_retry_interval_seconds),
+                    non_retryable_error_types=self.input.page_processor.initial_retry_policy.non_retryable_error_types,
                     maximum_attempts=0 # Infinite
                     )
             else:
-                return self.input.initial_retry_policy
+                return self.input.page_processor.initial_retry_policy
 
     def _run_init(self, input: BatchOrchestratorInput) -> None:
         self.input = input
