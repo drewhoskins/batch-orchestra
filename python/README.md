@@ -14,7 +14,7 @@ or
 
     pipx install poetry
 
-Clone temporal-batch and pull the latest source.
+Clone batch-orchestra and pull the latest source.
 
 Then, run the following from the python directory:
 
@@ -33,7 +33,6 @@ You may also run the sample.  See its [README](./samples/README.md)
 
 Some things to keep an eye on/ that I want to tackle before the initial release 
 
-* Naming of the library.  Is temporal-batch acceptable and advisable?
 * Should pass cursors as raw rather than str?
 * Is BatchOrchestratorEncodingPayloadConverter using modern best practices, and will it interfere with non-batch workflows running on the same workflow?
 * Test on other machines

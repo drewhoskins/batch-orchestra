@@ -190,7 +190,7 @@ class BatchProcessorContext(BatchProcessorContextBase):
     async def enqueue_next_page(self, page: BatchPage) -> None:
         assert self._parent_workflow is not None, \
             ("BatchProcessorContext.async_init() was never called.  This class should only be " +
-            "instantiated by the temporal-batch library.")
+            "instantiated by the batch-orchestra library.")
         assert self._next_page_signaled != BatchProcessorContext.NextPageSignaled.THIS_RUN, \
             ("You cannot call enqueue_next_page twice in the same page_processor.  Each processed page " +
              "is responsible for enqueuing the following page.")

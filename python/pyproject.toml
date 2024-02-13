@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "temporal-batch-python"
+name = "batch-orchestra-python"
 version = "0.1.0"
 description = "An easy-to-use library for reliably and scalably performing many like operations, orchestrated using [Temporal](https://temporal.io) workflows and activities."
 authors = ["Drew Hoskins"]
