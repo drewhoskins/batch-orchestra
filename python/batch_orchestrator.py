@@ -14,7 +14,7 @@ from temporalio.exceptions import ActivityError, ApplicationError, CancelledErro
 
 from batch_processor import list_page_processors
 from batch_processor import BatchPage, process_page
-from batch_orchestrator_data import BatchOrchestratorInput, BatchOrchestratorProgress
+from batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
 from batch_tracker import track_batch_progress
 
 #

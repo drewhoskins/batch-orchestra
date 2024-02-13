@@ -11,7 +11,7 @@ try:
     from temporalio.worker import Worker
 
     from batch_orchestrator import BatchOrchestrator, process_page
-    from batch_orchestrator_data import batch_orchestrator_data_converter
+    from batch_orchestrator_io import batch_orchestrator_data_converter
 
     # Import our registry of page processors
     import inflate_product_prices_page_processor

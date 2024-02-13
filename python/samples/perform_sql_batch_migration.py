@@ -13,12 +13,12 @@ try:
     from temporalio.client import Client
     from temporalio.types import MethodAsyncSingleParam
 
-    from batch_orchestrator_data import BatchOrchestratorProgress
+    from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
     from inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, ProductDBCursor
     from product_db import ProductDB
-    from batch_orchestrator_data import batch_orchestrator_data_converter
+    from batch_orchestrator_io import batch_orchestrator_data_converter
 except ModuleNotFoundError as e:
     print("This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.")
     print(f"Original error: {e}")

@@ -16,7 +16,7 @@ try:
     import temporalio.common
     import temporalio.exceptions
 
-    from batch_orchestrator_data import BatchOrchestratorProgress
+    from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_tracker import batch_tracker, track_batch_progress, BatchTrackerContext, BatchTrackerKeepPolling
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")

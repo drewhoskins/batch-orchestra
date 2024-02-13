@@ -10,7 +10,7 @@ from temporalio.exceptions import ApplicationError
 
 from batch_processor import BatchProcessorContextBase
 
-from batch_orchestrator_data import BatchOrchestratorProgress
+from batch_orchestrator_io import BatchOrchestratorProgress
 
 _batch_tracker_registry = {}
 def batch_tracker(batch_tracker_handler):
