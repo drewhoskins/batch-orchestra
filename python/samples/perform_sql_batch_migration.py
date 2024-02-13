@@ -55,12 +55,15 @@ async def main(num_items):
             BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
             BatchOrchestratorInput(
                 batch_id="inflate_product_prices", 
-                page_processor_name=inflate_product_prices.__name__, 
                 max_parallelism=5,
-                page_size=page_size,
-                page_processor_args=args.to_json()), 
+                page_processor=BatchOrchestratorInput.PageProcessorContext(
+                    name=inflate_product_prices.__name__, 
+                    page_size=page_size,
+                    args=args.to_json())
+                ),
             id=f"inflate_product_prices-{str(uuid.uuid4())}", 
-            task_queue="my-task-queue")
+            task_queue="my-task-queue"
+            )
         
         # Suppose we want to track intermediate progress.  We can query the BatchOrchestrator for its current state.
         time_slept = 0

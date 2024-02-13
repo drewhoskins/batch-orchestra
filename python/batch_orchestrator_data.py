@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+# This module concerns input and output (results/progress) for the BatchOrchestrator workflow.
+
 from typing import Optional
 from dataclasses import dataclass, asdict
 import dataclasses
@@ -122,7 +125,8 @@ class BatchOrchestratorEncodingPayloadConverter(EncodingPayloadConverter):
         if retry_policy["maximum_interval"]:
             retry_policy["maximum_interval"] = timedelta(seconds=retry_policy["maximum_interval"])
         decoded_results["page_processor"]["initial_retry_policy"] = RetryPolicy(**retry_policy)
-        decoded_results["batch_tracker"] = BatchOrchestratorInput.BatchTrackerContext(**decoded_results["batch_tracker"])
+        if "batch_tracker" in decoded_results and decoded_results["batch_tracker"] is not None:
+            decoded_results["batch_tracker"] = BatchOrchestratorInput.BatchTrackerContext(**decoded_results["batch_tracker"])
         decoded_results["page_processor"] = BatchOrchestratorInput.PageProcessorContext(
             **decoded_results["page_processor"]
         )

@@ -7,7 +7,7 @@ import pytest
 import pytest_asyncio
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
-from batch_orchestrator_data import batch_orchestrator_data_converter
+from batch_orchestrator_io import batch_orchestrator_data_converter
 
 #
 # This file was copied from https://github.com/temporalio/samples-python/blob/main/tests/conftest.py
