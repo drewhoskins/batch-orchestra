@@ -34,28 +34,28 @@ except ModuleNotFoundError as e:
 #  3. Run this script with poetry run python samples/perform_sql_batch_migration.py
 #
 async def main(num_items):
-    client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
+    # Set up the connection to temporal-server.
+    # Note that you must add a "data converter" which will marshall some of the parameters inside BatchOrchestratorInput.
+    temporal_client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
+
     print("Make sure to run the sample workers with `poetry run python samples/run_workers.py` if you haven't.")
-    # Create a temporary database which we'll clean up at thte end.
+
+    # Create a temporary database which we'll clean up at the end.
     db_file = NamedTemporaryFile(suffix="_my_product.db", delete=False)
     print(f"Creating a temporary database in {db_file.name}")
-    # Create client connected to server at the given address
     db_connection = ProductDB.get_db_connection(db_file.name)
 
     ProductDB.populate_table(db_connection, num_records=num_items)
 
     try:
-        cursor = ""
-
         print(f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail.")
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
         # Execute the migration
-        handle = await client.start_workflow(
+        handle = await temporal_client.start_workflow(
             BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
             BatchOrchestratorInput(
                 temporal_client_factory_name=make_temporal_client.__name__,
-                batch_id="inflate_product_prices", 
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
                     name=inflate_product_prices.__name__, 
@@ -66,20 +66,19 @@ async def main(num_items):
             task_queue="my-task-queue"
             )
         
-        # Suppose we want to track intermediate progress.  We can query the BatchOrchestrator for its current state.
+        # Suppose we want to track intermediate progress.  We could add a batch_tracker to run a tracker on the worker, 
+        # but for this sample, we'll query the BatchOrchestrator so we can show something in this console window.
         time_slept = 0
         while True:
             await sleep(5)
             time_slept += 5
-            interim_result = await handle.query(BatchOrchestrator.current_progress)
-            assert interim_result.num_completed_pages <= 1 + (num_items / page_size)
-            print(f"Current progress after {time_slept} seconds: {interim_result}")
-            if interim_result.num_completed_pages == 1 + (num_items / page_size):
+            progress = await handle.query(BatchOrchestrator.current_progress)
+            print(f"Current progress after {time_slept} seconds: {progress}")
+            if progress.is_finished:
                 break
-
         result = await handle.result()
 
-        print(f"Migration finished after {time_slept} seconds with {result.num_completed_pages} pages processed.\n"+
+        print(f"Migration finished after less than {time_slept} seconds with {result.num_completed_pages} pages processed.\n"+
               f"Max parallelism achieved: {result.max_parallelism_achieved}.")
 
         # Verify that we adjusted the prices on all rows.
