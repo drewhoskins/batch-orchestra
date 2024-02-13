@@ -43,10 +43,6 @@ async def track_batch_progress(
             f"You passed temporal_client_factory_name '{temporal_client_factory_name}' into the BatchOrchestrator, but it was not registered on " +
             f"your worker. Please annotate it with @temporal_client_factory and make sure its module is imported. " + 
             f"Available callables: {list_temporal_client_factories()}")
-    print("MOOO")
-    print(temporal_client_factory_name)
-    print(temporal_client_factory)
-    print(await temporal_client_factory())
     context = await BatchTrackerContext(
         temporal_client_factory=temporal_client_factory,
         batch_id=batch_id, 

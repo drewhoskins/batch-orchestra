@@ -199,7 +199,6 @@ class BatchProcessorContext(BatchProcessorContextBase):
         if self._did_signal_next_page():
             return
         
-        print(f"Signaling page '{page.cursor_str}'")
         await self._parent_workflow.signal(
             '_signal_add_page', # use string instead of literal to avoid upward dependency between this file and batch_orchestrator.py
             args=[page, self._page_num + 1]
