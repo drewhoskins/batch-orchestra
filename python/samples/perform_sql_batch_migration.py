@@ -16,7 +16,7 @@ try:
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
-    from inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, ProductDBCursor
+    from inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, make_temporal_client
     from product_db import ProductDB
     from batch_orchestrator_io import batch_orchestrator_data_converter
 except ModuleNotFoundError as e:
@@ -54,6 +54,7 @@ async def main(num_items):
         handle = await client.start_workflow(
             BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
             BatchOrchestratorInput(
+                temporal_client_factory_name=make_temporal_client.__name__,
                 batch_id="inflate_product_prices", 
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import logging
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from enum import Enum
 
 from temporalio import activity
@@ -39,6 +39,24 @@ def page_processor(page_processor_function):
 def list_page_processors():
     return list(_page_processor_registry.keys())
 
+# The batch tracker and page processor functions need to be able to connect to the parent orchestrator workflow for
+# various reasons.  You must provide a factory function that returns a Client object.
+# 
+# Example usage:
+# from batch_processor import temporal_client_factory
+# import temporalio.client
+# 
+# @temporal_client_factory
+# async def make_temporal_client(): 
+#    return await temporalio.client.Client.connect("localhost:7233") 
+_temporal_client_factory_registry = {}
+def temporal_client_factory(temporal_client_factory_function):
+    _temporal_client_factory_registry[temporal_client_factory_function.__name__] = temporal_client_factory_function
+    return temporal_client_factory_function
+
+def list_temporal_client_factories():
+    return list(_temporal_client_factory_registry.keys())
+
 # In your batch jobs, you'll chunk them into pages of work that run in parallel with one another. 
 # Each page, represented by this class, processes in series.
 # Choose a page size that can run in under five minutes.
@@ -53,20 +71,35 @@ class BatchPage:
 # convert batchPageProcessorName to a function and call it with the page
 # Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
 @activity.defn
-async def process_page(batch_page_processor_name: str, batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], did_signal_next_page: bool) -> Any:
+async def process_page(
+    temporal_client_factory_name: str,
+    batch_page_processor_name: str, 
+    batch_id: Optional[str], 
+    page: BatchPage, 
+    page_num: int, 
+    args: Optional[str], 
+    did_signal_next_page: bool) -> Any:
+    temporal_client_factory = _temporal_client_factory_registry.get(temporal_client_factory_name)
+    if not temporal_client_factory:
+        raise ValueError(
+            f"You passed temporal_client_factory_name '{temporal_client_factory_name}' into the BatchOrchestrator, but it was not registered on " +
+            f"your worker. Please annotate it with @temporal_client_factory and make sure its module is imported. " + 
+            f"Available callables: {list_temporal_client_factories()}")
     context = await BatchProcessorContext(
+        temporal_client_factory=temporal_client_factory,
         batch_id=batch_id,
         page=page,
         page_num=page_num,
         args=args,
         activity_info=activity.info(),
         did_signal_next_page=did_signal_next_page).async_init()
+
     user_provided_page_processor = _page_processor_registry.get(batch_page_processor_name)
     if not user_provided_page_processor:
-        raise Exception(
+        raise ValueError(
             f"You passed page_processor_name '{batch_page_processor_name}' into the BatchOrchestrator, but it was not registered on " +
-            f"your worker.  Please annotate it with @page_processor and make sure its module is imported. " + 
-            f"Available functions: {list_page_processors()}")
+            f"your worker. Please annotate it with @page_processor and make sure its module is imported. " + 
+            f"Available callables: {list_page_processors()}")
     return await user_provided_page_processor(context)
 
 class LoggerAdapter(activity.LoggerAdapter):
@@ -87,14 +120,14 @@ class LoggerAdapter(activity.LoggerAdapter):
         return msg, kwargs
 
 class BatchProcessorContextBase:
-    def __init__(self, activity_info: activity.Info):
+    def __init__(self, temporal_client_factory: Callable, activity_info: activity.Info):
         self._activity_info = activity_info
+        self._temporal_client_factory = temporal_client_factory
         self._workflow_client: Optional[Client] = None
         self._parent_workflow: Optional[WorkflowHandle] = None
 
     async def async_init(self)-> BatchProcessorContextBase:
-        # TODO de-hardcode client URL
-        self._workflow_client = await Client.connect("localhost:7233")
+        self._workflow_client = await self._temporal_client_factory()
         self._parent_workflow = self._workflow_client.get_workflow_handle(
             self._activity_info.workflow_id, run_id = self._activity_info.workflow_run_id)
         return self
@@ -108,8 +141,8 @@ class BatchProcessorContext(BatchProcessorContextBase):
         THIS_RUN = 2
         PREVIOUS_RUN = 3
 
-    def __init__(self, *, batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
-        super().__init__(activity_info)
+    def __init__(self, *, temporal_client_factory: Callable, batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
+        super().__init__(temporal_client_factory, activity_info)
         self._batch_id = batch_id
         self._page = page
         self._page_num = page_num

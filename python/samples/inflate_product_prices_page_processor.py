@@ -3,10 +3,17 @@ from asyncio import sleep
 from dataclasses import asdict, dataclass
 import json
 import sys
+import temporalio.client
+
 from typing import Optional
 
-from batch_processor import BatchProcessorContext, BatchPage, page_processor
+
+from batch_processor import BatchProcessorContext, BatchPage, page_processor, temporal_client_factory
 from product_db import ProductDB
+
+@temporal_client_factory
+async def make_temporal_client():
+    await temporalio.client.Client.connect("localhost:7233")
 
 @dataclass
 class ConfigArgs:

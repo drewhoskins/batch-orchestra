@@ -13,7 +13,7 @@ try:
     from temporalio.common import RetryPolicy
 
 
-    from batch_processor import BatchProcessorContext, page_processor
+    from batch_processor import BatchProcessorContext, page_processor, temporal_client_factory
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
     from batch_tracker import BatchTrackerContext, batch_tracker, track_batch_progress
 except ModuleNotFoundError as e:
@@ -23,6 +23,11 @@ except ModuleNotFoundError as e:
 
 def default_cursor():
     return MyCursor(0).to_json()
+
+@temporal_client_factory
+async def make_temporal_client():
+    return await Client.connect("localhost:7233")
+
 
 @dataclass
 class MyCursor:
@@ -103,6 +108,7 @@ async def test_tracking_polls(client: Client):
 
         input = BatchOrchestratorInput(
             max_parallelism=3, 
+            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=fails_first_n_tries.__name__,
                 args=MyArgs(fail_until_i=5).to_json(),
@@ -135,6 +141,7 @@ async def test_tracker_can_be_canceled(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             max_parallelism=3,
+            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=fails_first_n_tries.__name__,
                 page_size=10,

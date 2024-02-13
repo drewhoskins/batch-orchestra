@@ -20,6 +20,9 @@ from temporalio.common import RetryPolicy
 
 @dataclass(kw_only=True)
 class BatchOrchestratorInput:
+    # The function, annotated with @temporal_client_factory, that will be called on your worker to interface with the 
+    # BatchOrchestrator workflow.
+    temporal_client_factory_name: str
     # Configuration for the workhorse of your batch operation.
     page_processor: PageProcessorContext
     # Use this to manage load on your downstream dependencies such as DBs or APIs by limiting the number of pages
