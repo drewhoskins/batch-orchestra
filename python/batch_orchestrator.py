@@ -412,6 +412,11 @@ class BatchOrchestrator:
                     lambda: self.page_tracker.is_new_page_ready() or self.page_tracker.work_is_complete())
                 if self.page_tracker.is_new_page_ready():
                     self.start_page_processor_activity(self.pages[self.page_tracker.get_next_page_num()])
+                if workflow.info().is_continue_as_new_suggested():
+                    self.logger.warning(
+                        f"You have launched {self.page_tracker.num_pages_ever_enqueued} pages.  Temporal is suggesting that" +\
+                            "the workflow history is getting too big.  Consider using a larger page size.  Please also reach out " +\
+                            "to request higher scale.")
 
         def _build_retry_policy(self, is_extended_retries: bool) -> RetryPolicy:
             if is_extended_retries:

@@ -82,6 +82,7 @@ class BatchOrchestratorInput:
 @dataclass
 class BatchOrchestratorProgress:
     # Pages which are failing to process but are still being retried.
+    # TODO - report a list of stuck pages with exceptions
     num_stuck_pages: int    
     num_processing_pages: int
     num_completed_pages: int
