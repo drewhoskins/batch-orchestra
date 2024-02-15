@@ -28,7 +28,7 @@ Then use pytest to run the tests:
 
     poetry run pytest tests/
 
-You may also run the sample.  See its [README](./samples/README.md)
+You may also run the samples, which are currently the best place to get an idea of how to implement.  See the [samples README](./samples/README.md)
 
 # Contributor's guide
 
