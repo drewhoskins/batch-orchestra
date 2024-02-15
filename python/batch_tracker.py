@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import logging
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 from enum import Enum
 
 from temporalio import activity
@@ -54,7 +54,7 @@ async def track_batch_progress(
         raise BatchTrackerKeepPolling()
 
 class BatchTrackerContext(BatchProcessorContextBase):
-    def __init__(self, *, temporal_client_factory, batch_id: Optional[str], args: Optional[str], activity_info: activity.Info):
+    def __init__(self, *, temporal_client_factory: Callable[..., Awaitable[Client]], batch_id: Optional[str], args: Optional[str], activity_info: activity.Info):
         super().__init__(temporal_client_factory, activity_info)
         self._batch_id = batch_id
         self._args = args

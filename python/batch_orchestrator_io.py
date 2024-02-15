@@ -18,7 +18,6 @@ from temporalio.converter import (
 from temporalio.api.common.v1 import Payload
 from temporalio.common import RetryPolicy
 
-@staticmethod
 def batch_orchestrator_input_default_initial_retry_policy():
     return RetryPolicy(maximum_attempts=10)
 

@@ -322,8 +322,8 @@ class SomeNonRetryableException(Exception):
     pass
 
 @temporal_client_factory
-async def make_temporal_client():
-    return await Client.connect("localhost:7233")
+def make_temporal_client():
+    return Client.connect("localhost:7233")
 
 call_count = 0
 @page_processor

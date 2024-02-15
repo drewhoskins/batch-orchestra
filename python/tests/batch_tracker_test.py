@@ -124,3 +124,18 @@ async def test_elapsed_time_tracker():
             notify_mock.assert_called_once_with('my_batch_id')
         else:
             assert False, "Expected BatchTrackerKeepPolling to be raised"
+
+@temporal_client_factory
+async def returns_none():
+    return None
+
+@pytest.mark.asyncio
+async def test_invalid_temporal_client():
+    env = ActivityEnvironment()
+    try:
+        await env.run(track_batch_progress, returns_none.__name__, polls_for_stuck_pages.__name__, 'my_batch_id', None)
+    except ValueError as e:
+        assert str(e) == f"Your @temporal_client_factory 'returns_none' returned a <class 'NoneType'> but should return a temporalio.client.Client. " +\
+            "Consider the Client.connect factory."
+    else:
+        assert False

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 from enum import Enum
 
 from temporalio import activity
@@ -120,7 +120,7 @@ class LoggerAdapter(activity.LoggerAdapter):
         return msg, kwargs
 
 class BatchProcessorContextBase:
-    def __init__(self, temporal_client_factory: Callable, activity_info: activity.Info):
+    def __init__(self, temporal_client_factory: Callable[..., Awaitable[Client]], activity_info: activity.Info):
         self._activity_info = activity_info
         self._temporal_client_factory = temporal_client_factory
         self._workflow_client: Optional[Client] = None
@@ -128,6 +128,10 @@ class BatchProcessorContextBase:
 
     async def async_init(self)-> BatchProcessorContextBase:
         self._workflow_client = await self._temporal_client_factory()
+        if not isinstance(self._workflow_client, Client):
+            raise ValueError(
+                f"Your @temporal_client_factory '{self._temporal_client_factory.__name__}' returned a {type(self._workflow_client)} but should return a temporalio.client.Client. " +\
+                f"Consider the Client.connect factory.")
         self._parent_workflow = self._workflow_client.get_workflow_handle(
             self._activity_info.workflow_id, run_id = self._activity_info.workflow_run_id)
         return self
@@ -141,7 +145,7 @@ class BatchProcessorContext(BatchProcessorContextBase):
         THIS_RUN = 2
         PREVIOUS_RUN = 3
 
-    def __init__(self, *, temporal_client_factory: Callable, batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
+    def __init__(self, *, temporal_client_factory: Callable[..., Awaitable[Client]], batch_id: Optional[str], page: BatchPage, page_num: int, args: Optional[str], activity_info: activity.Info, did_signal_next_page: bool):
         super().__init__(temporal_client_factory, activity_info)
         self._batch_id = batch_id
         self._page = page
