@@ -9,7 +9,7 @@ from typing import Optional
 
 
 from batch_processor import BatchProcessorContext, BatchPage, page_processor, temporal_client_factory
-from product_db import ProductDB
+from samples.product_db import ProductDB
 
 @temporal_client_factory
 async def make_temporal_client():

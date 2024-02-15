@@ -1,7 +1,8 @@
-# Having set up a temporal server at localhost:7233,
+# Having set up a temporal server,
 # you can start 5 sample workers with this script:
 #    poetry run python samples/run_workers.py
 import sys
+
 try:
     import asyncio
     import multiprocessing
@@ -14,10 +15,13 @@ try:
     from batch_orchestrator_io import batch_orchestrator_data_converter
 
     # Import our registry of page processors
-    import inflate_product_prices_page_processor
+    import samples.inflate_product_prices_page_processor
 except ModuleNotFoundError as e:
-    print("This script requires poetry.  `poetry run python samples/run_workers.py`.")
-    print(f"Original error: {e}")
+    print(f"""
+This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.
+But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.
+Original error: {e}
+        """)
     sys.exit(1)
 
 interrupt_event = asyncio.Event()
@@ -25,12 +29,21 @@ interrupt_event = asyncio.Event()
 
 async def worker_async():
     logging.basicConfig(level=logging.INFO)
-    # Connect client
-    client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
+    # Set up the connection to temporal-server.
+    # Note that you must add a "data converter" which will marshall some of the parameters inside BatchOrchestratorInput.
+    host = "localhost:7233"
+    try:
+        temporal_client = await Client.connect(host, data_converter=batch_orchestrator_data_converter)
+    except RuntimeError as e:
+        print(f"""
+Could not connect to temporal-server at {host}.  Check the README.md Python Quick Start if you need guidance.
+Original error: {e}
+           """)
+        sys.exit(1)
 
     # Run a worker for the activities and workflow
     async with Worker(
-        client,
+        temporal_client,
         task_queue="my-task-queue",
         activities=[process_page],
         workflows=[BatchOrchestrator],

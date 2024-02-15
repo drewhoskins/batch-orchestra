@@ -3,7 +3,7 @@ from __future__ import annotations
 # This module concerns input and output (results/progress) for the BatchOrchestrator workflow.
 
 from typing import Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import dataclasses
 from datetime import datetime, timedelta
 import json
@@ -17,6 +17,10 @@ from temporalio.converter import (
 )
 from temporalio.api.common.v1 import Payload
 from temporalio.common import RetryPolicy
+
+@staticmethod
+def batch_orchestrator_input_default_initial_retry_policy():
+    return RetryPolicy(maximum_attempts=10)
 
 @dataclass(kw_only=True)
 class BatchOrchestratorInput:
@@ -59,12 +63,13 @@ class BatchOrchestratorInput:
         # it to the extended retry queue which will continue to retry indefinitely once the working pages are finished.
         # This avoids the queue--which maxes out at max_parallelism concurrent page processors--getting filled up
         # with failing pages for a long time and blocking progress on other pages.
-        initial_retry_policy: RetryPolicy = RetryPolicy(maximum_attempts=10)
+        initial_retry_policy: RetryPolicy = field(default_factory=batch_orchestrator_input_default_initial_retry_policy)
         # You should set this to false if you have a non-idempotent page processor you don't want to retry, in which case 
         # you should also set max_attempts to 1 in initial_retry_policy.
         use_extended_retries: bool = True
         # By default, retry every five minutes in perpetuity.
         extended_retry_interval_seconds: int = 300
+
 
     @dataclass(kw_only=True)
     class BatchTrackerContext:

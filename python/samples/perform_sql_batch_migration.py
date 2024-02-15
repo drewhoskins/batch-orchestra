@@ -12,16 +12,20 @@ try:
 
     from temporalio.client import Client
     from temporalio.types import MethodAsyncSingleParam
+    import temporalio.service
 
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
-    from inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, make_temporal_client
-    from product_db import ProductDB
+    from samples.inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, make_temporal_client
+    from samples.product_db import ProductDB
     from batch_orchestrator_io import batch_orchestrator_data_converter
 except ModuleNotFoundError as e:
-    print("This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.")
-    print(f"Original error: {e}")
+    print(f"""
+This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.
+But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.
+Original error: {e}
+        """)
     sys.exit(1)
 
                                                                               
@@ -36,7 +40,15 @@ except ModuleNotFoundError as e:
 async def main(num_items):
     # Set up the connection to temporal-server.
     # Note that you must add a "data converter" which will marshall some of the parameters inside BatchOrchestratorInput.
-    temporal_client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
+    host = "localhost:7233"
+    try:
+        temporal_client = await Client.connect(host, data_converter=batch_orchestrator_data_converter)
+    except RuntimeError as e:
+        print(f"""
+Could not connect to temporal-server at {host}.  Check the README.md Python Quick Start if you need guidance.
+Original error: {e}
+           """)
+        sys.exit(1)
 
     print("Make sure to run the sample workers with `poetry run python samples/run_workers.py` if you haven't.")
 
@@ -52,7 +64,7 @@ async def main(num_items):
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
         # Execute the migration
-        handle = await temporal_client.start_workflow(
+        handle: temporalio.client.WorkflowHandle = await temporal_client.start_workflow(
             BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
             BatchOrchestratorInput(
                 temporal_client_factory_name=make_temporal_client.__name__,
@@ -72,10 +84,14 @@ async def main(num_items):
         while True:
             await sleep(5)
             time_slept += 5
-            progress = await handle.query(BatchOrchestrator.current_progress)
-            print(f"Current progress after {time_slept} seconds: {progress}")
-            if progress.is_finished:
-                break
+            try:
+                progress = await handle.query(BatchOrchestrator.current_progress)
+            except temporalio.service.RPCError as e:
+                print(f"Waiting for workflow {handle.id} to start...")
+            else:
+                if progress.is_finished:
+                    break
+                print(f"Current progress after {time_slept} seconds: {progress}")
         result = await handle.result()
 
         print(f"Migration finished after less than {time_slept} seconds with {result.num_completed_pages} pages processed.\n"+
@@ -95,6 +111,10 @@ async def main(num_items):
 
     finally:
         os.remove(db_file.name)
+        info = await handle.describe()
+        if info.status == temporalio.client.WorkflowExecutionStatus.RUNNING:
+            print("\nCanceling workflow") 
+            await handle.cancel()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table.")

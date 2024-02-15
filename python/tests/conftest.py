@@ -52,7 +52,12 @@ async def env(request) -> AsyncGenerator[WorkflowEnvironment, None]:
         raise NotImplementedError("Time-skipping mode is untested.")
 #        env = await WorkflowEnvironment.start_time_skipping()
     else:
-        env = WorkflowEnvironment.from_client(await Client.connect(env_type, data_converter=batch_orchestrator_data_converter))
+        try:
+            client = await Client.connect(env_type, data_converter=batch_orchestrator_data_converter)
+        except RuntimeError as e:
+            message = f"Could not connect to temporal-server at {env_type}.  Check the README.md Python Quick Start if you need guidance."
+            raise RuntimeError(message) from e
+        env = WorkflowEnvironment.from_client(client)
     yield env
     await env.shutdown()
 
