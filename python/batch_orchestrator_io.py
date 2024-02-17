@@ -12,8 +12,9 @@ from typing import Any, Dict, List, Optional, Set, Type
 import temporalio.converter
 from temporalio.converter import (
     CompositePayloadConverter,
+    DataConverter,
     DefaultPayloadConverter,
-    EncodingPayloadConverter
+    EncodingPayloadConverter,
 )
 from temporalio.api.common.v1 import Payload
 from temporalio.common import RetryPolicy
@@ -146,12 +147,10 @@ class BatchOrchestratorPayloadConverter(CompositePayloadConverter):
         # Just add ours as first before the defaults
         super().__init__(
             BatchOrchestratorEncodingPayloadConverter(),
-            # TODO(drewhoskins): Update this to make use of fix for https://github.com/temporalio/sdk-python/issues/139
-            *DefaultPayloadConverter().converters.values(),
+            *DefaultPayloadConverter.default_encoding_payload_converters
         )
 
 # Use the default data converter, but change the payload converter.
-batch_orchestrator_data_converter = dataclasses.replace(
-    temporalio.converter.default(),
-    payload_converter_class=BatchOrchestratorPayloadConverter,
+batch_orchestrator_data_converter = DataConverter(
+    payload_converter_class=BatchOrchestratorPayloadConverter
 )
