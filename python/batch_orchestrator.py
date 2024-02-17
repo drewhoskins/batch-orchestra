@@ -127,55 +127,22 @@ class BatchOrchestrator:
 
     @dataclass(kw_only=True)
     class EnqueuedPage:
-        class Phase(Enum):
-            PENDING = 0
-            PROCESSING = 1
-            # To avoid gumming up the queue, we won't retry it until all other pages are completed or stuck
-            AWAITING_PROCESSING = 2
-            PENDING_EXTENDED_RETRIES = 3
-            PROCESSING_EXTENDED_RETRIES = 4
-            COMPLETED = 5
-            FAILED = 6
-
         page: BatchPage
-        phase: Phase
         page_num: int
         did_signal_next_page: bool = False
         last_exception: Optional[BaseException] = None
         future: Optional[Future[str]] = None
 
         def set_processing_started(self, future: Future[str]) -> None:
-            match self.phase:
-                case BatchOrchestrator.EnqueuedPage.Phase.PENDING:
-                    self.phase = BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
-                case BatchOrchestrator.EnqueuedPage.Phase.PENDING_EXTENDED_RETRIES:
-                    self.phase = BatchOrchestrator.EnqueuedPage.Phase.PROCESSING_EXTENDED_RETRIES
-                case _:
-                    assert False, f"Cannot transition to processing from unexpected phase {self.phase}"
             self.future = future
 
         def set_processing_finished(self) -> None:
-            assert self.phase in [BatchOrchestrator.EnqueuedPage.Phase.PROCESSING, BatchOrchestrator.EnqueuedPage.Phase.PROCESSING_EXTENDED_RETRIES]
-            self.phase = BatchOrchestrator.EnqueuedPage.Phase.COMPLETED
             self.future = None
 
         def set_processing_got_stuck(self, exception: BaseException, did_signal_next_page: bool) -> None:
-            assert self.phase == BatchOrchestrator.EnqueuedPage.Phase.PROCESSING
-            self.phase = BatchOrchestrator.EnqueuedPage.Phase.AWAITING_PROCESSING
             self.last_exception = exception
             self.future = None
             self.did_signal_next_page = did_signal_next_page
-
-        def set_processing_failed(self, exception: BaseException, did_signal_next_page: bool) -> None:
-            assert self.phase in [BatchOrchestrator.EnqueuedPage.Phase.PROCESSING, BatchOrchestrator.EnqueuedPage.Phase.PROCESSING_EXTENDED_RETRIES]
-            self.phase = BatchOrchestrator.EnqueuedPage.Phase.FAILED
-            self.last_exception = exception
-            self.future = None
-            self.did_signal_next_page = did_signal_next_page
-
-        def set_pending(self) -> None:
-            assert self.phase in [BatchOrchestrator.EnqueuedPage.Phase.AWAITING_PROCESSING]
-            self.phase = BatchOrchestrator.EnqueuedPage.Phase.PENDING_EXTENDED_RETRIES
 
     class LoggerAdapter(workflow.LoggerAdapter):
         def __init__(self, input: BatchOrchestratorInput) -> None:
@@ -331,13 +298,11 @@ class BatchOrchestrator:
 
             self.pages[page_num] = BatchOrchestrator.EnqueuedPage(
                 page=page,
-                phase=BatchOrchestrator.EnqueuedPage.Phase.PENDING,
                 page_num=page_num)
             self.page_tracker.on_page_enqueued(page_num)
             
         def re_enqueue_stuck_pages(self) -> None:
             for page_num in self.page_tracker.stuck_page_nums:
-                self.pages[page_num].set_pending()
                 self.page_tracker.on_page_enqueued(page_num)
   
         def is_non_retryable(self, exception: BaseException) -> bool:
@@ -349,7 +314,7 @@ class BatchOrchestrator:
             else:
                 return False
 
-        def on_page_failed(self, page: BatchPage, page_num: int, exception: BaseException) -> None:
+        def on_page_failing(self, page: BatchPage, page_num: int, exception: BaseException) -> None:
 
             # If the page told us about its successor, we need to tell the page processor not to re-signal when it
             # is processed within the extended retries phase.  This will avoid extra signals filling up the workflow history.
@@ -364,13 +329,12 @@ class BatchOrchestrator:
                     f"Batch executor failed {self.logger.describe_page(page_num, page)}, with a non-retryable error.",
                     {"exception": exception})
                 self.page_tracker.on_page_failed(page_num)
-                self.pages[page_num].set_processing_failed(exception, did_signal_next_page)
             else:
                 self.logger.info(
                     f"Batch orchestrator got stuck trying {self.logger.describe_page(page_num, page)}.  {signaled_text}  Will retry.", 
                     {"exception": exception})
                 self.page_tracker.on_page_got_stuck(page_num)
-                self.pages[page_num].set_processing_got_stuck(exception, did_signal_next_page)
+            self.pages[page_num].set_processing_got_stuck(exception, did_signal_next_page)
 
         def on_page_processed(self, future: Future[str], page_num: int, page: BatchPage) -> None:
             exception = future.exception()
@@ -378,7 +342,7 @@ class BatchOrchestrator:
                 assert isinstance(exception, ActivityError)
                 exception = exception.__cause__
                 assert exception is not None
-                self.on_page_failed(page, page_num, exception)
+                self.on_page_failing(page, page_num, exception)
             else:
                 self.logger.info(f"Batch orchestrator completed {self.logger.describe_page(page_num, page)}.")
                 self.pages[page_num].set_processing_finished()
@@ -388,7 +352,7 @@ class BatchOrchestrator:
         def start_page_processor_activity(self, enqueued_page: BatchOrchestrator.EnqueuedPage) -> None:
             page = enqueued_page.page
             page_num = enqueued_page.page_num
-            already_tried = enqueued_page.phase == BatchOrchestrator.EnqueuedPage.Phase.PENDING_EXTENDED_RETRIES
+            already_tried = enqueued_page.last_exception is not None
             future = workflow.start_activity(
                 process_page, 
                 args=[self.input.temporal_client_factory_name, self.input.page_processor.name, self.input.batch_id, page, page_num, self.input.page_processor.args, enqueued_page.did_signal_next_page], 
