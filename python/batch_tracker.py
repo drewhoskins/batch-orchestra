@@ -1,14 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import logging
-from typing import Any, Awaitable, Callable, Optional
-from enum import Enum
+from typing import Any, Optional
 
 from temporalio import activity
-from temporalio.client import Client, WorkflowHandle
-from temporalio.exceptions import ApplicationError
 
-from batch_processor import BatchProcessorContextBase, _temporal_client_factory_registry, list_temporal_client_factories
+from batch_processor import BatchWorkerContext
 
 from batch_orchestrator_io import BatchOrchestratorProgress
 
@@ -27,7 +24,6 @@ class BatchTrackerKeepPolling(Exception):
 
 @activity.defn
 async def track_batch_progress(
-    temporal_client_factory_name: str,
     batch_tracker_name: str, 
     batch_id: Optional[str], 
     args: Optional[str]) -> None:
@@ -37,14 +33,7 @@ async def track_batch_progress(
             f"You passed batch_tracker_name '{batch_tracker_name}' into the BatchOrchestrator, but it was not registered on " +
             f"your worker.  Please annotate it with @batch_tracker and make sure its module is imported. " + 
             f"Available functions: {list_batch_trackers()}")
-    temporal_client_factory = _temporal_client_factory_registry.get(temporal_client_factory_name)
-    if not temporal_client_factory:
-        raise ValueError(
-            f"You passed temporal_client_factory_name '{temporal_client_factory_name}' into the BatchOrchestrator, but it was not registered on " +
-            f"your worker. Please annotate it with @temporal_client_factory and make sure its module is imported. " + 
-            f"Available callables: {list_temporal_client_factories()}")
     context = await BatchTrackerContext(
-        temporal_client_factory=temporal_client_factory,
         batch_id=batch_id, 
         args=args, 
         activity_info=activity.info()).async_init()
@@ -53,9 +42,9 @@ async def track_batch_progress(
         # Ensures that we'll periodically wake up to check the batch's progress
         raise BatchTrackerKeepPolling()
 
-class BatchTrackerContext(BatchProcessorContextBase):
-    def __init__(self, *, temporal_client_factory: Callable[..., Awaitable[Client]], batch_id: Optional[str], args: Optional[str], activity_info: activity.Info):
-        super().__init__(temporal_client_factory, activity_info)
+class BatchTrackerContext(BatchWorkerContext):
+    def __init__(self, *, batch_id: Optional[str], args: Optional[str], activity_info: activity.Info):
+        super().__init__(activity_info)
         self._batch_id = batch_id
         self._args = args
 

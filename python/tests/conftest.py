@@ -2,12 +2,12 @@ import asyncio
 import multiprocessing
 import sys
 from typing import AsyncGenerator
+from batch_worker import BatchWorkerClient
 
 import pytest
 import pytest_asyncio
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
-from batch_orchestrator_io import batch_orchestrator_data_converter
 
 #
 # This file was copied from https://github.com/temporalio/samples-python/blob/main/tests/conftest.py
@@ -53,7 +53,8 @@ async def env(request) -> AsyncGenerator[WorkflowEnvironment, None]:
 #        env = await WorkflowEnvironment.start_time_skipping()
     else:
         try:
-            client = await Client.connect(env_type, data_converter=batch_orchestrator_data_converter)
+            client = await Client.connect(env_type)
+            client = BatchWorkerClient.augment(client)
         except RuntimeError as e:
             message = f"Could not connect to temporal-server at {env_type}.  Check the README.md Python Quick Start if you need guidance."
             raise RuntimeError(message) from e

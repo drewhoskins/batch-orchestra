@@ -8,12 +8,8 @@ import temporalio.client
 from typing import Optional
 
 
-from batch_processor import BatchProcessorContext, BatchPage, page_processor, temporal_client_factory
+from batch_processor import BatchProcessorContext, BatchPage, page_processor
 from samples.product_db import ProductDB
-
-@temporal_client_factory
-async def make_temporal_client():
-    return await temporalio.client.Client.connect("localhost:7233")
 
 @dataclass
 class ConfigArgs:

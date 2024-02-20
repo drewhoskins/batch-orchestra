@@ -3,6 +3,8 @@
 #    poetry run python samples/run_workers.py
 import sys
 
+from batch_worker import BatchWorkerClient
+
 try:
     import asyncio
     import multiprocessing
@@ -33,7 +35,8 @@ async def worker_async():
     # Note that you must add a "data converter" which will marshall some of the parameters inside BatchOrchestratorInput.
     host = "localhost:7233"
     try:
-        temporal_client = await Client.connect(host, data_converter=batch_orchestrator_data_converter)
+        temporal_client = await Client.connect(host)
+        temporal_client = BatchWorkerClient.augment(temporal_client)
     except RuntimeError as e:
         print(f"""
 Could not connect to temporal-server at {host}.  Check the README.md Python Quick Start if you need guidance.

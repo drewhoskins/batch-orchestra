@@ -102,7 +102,7 @@ class BatchOrchestrator:
         if self.input.batch_tracker is not None:
             self._progress_tracker = workflow.start_activity(
                 track_batch_progress, 
-                args=[self.input.temporal_client_factory_name, self.input.batch_tracker.name, self.input.batch_id, self.input.batch_tracker.args], 
+                args=[self.input.batch_tracker.name, self.input.batch_id, self.input.batch_tracker.args], 
                 start_to_close_timeout=timedelta(seconds=self.input.batch_tracker.timeout_seconds),
                 retry_policy=RetryPolicy(backoff_coefficient=1, initial_interval=timedelta(seconds=self.input.batch_tracker.polling_interval_seconds))
                 )
@@ -355,7 +355,7 @@ class BatchOrchestrator:
             already_tried = enqueued_page.last_exception is not None
             future = workflow.start_activity(
                 process_page, 
-                args=[self.input.temporal_client_factory_name, self.input.page_processor.name, self.input.batch_id, page, page_num, self.input.page_processor.args, enqueued_page.did_signal_next_page], 
+                args=[self.input.page_processor.name, self.input.batch_id, page, page_num, self.input.page_processor.args, enqueued_page.did_signal_next_page], 
                 start_to_close_timeout=timedelta(seconds=self.input.page_processor.timeout_seconds),
                 retry_policy=self._build_retry_policy(already_tried)
                 )

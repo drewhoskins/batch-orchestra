@@ -24,9 +24,6 @@ def batch_orchestrator_input_default_initial_retry_policy():
 
 @dataclass(kw_only=True)
 class BatchOrchestratorInput:
-    # The function, annotated with @temporal_client_factory, that will be called on your worker to interface with the 
-    # BatchOrchestrator workflow.
-    temporal_client_factory_name: str
     # Configuration for the workhorse of your batch operation.
     page_processor: PageProcessorContext
     # Use this to manage load on your downstream dependencies such as DBs or APIs by limiting the number of pages
@@ -150,7 +147,6 @@ class BatchOrchestratorPayloadConverter(CompositePayloadConverter):
             *DefaultPayloadConverter.default_encoding_payload_converters
         )
 
-# Use the default data converter, but change the payload converter.
 batch_orchestrator_data_converter = DataConverter(
     payload_converter_class=BatchOrchestratorPayloadConverter
 )

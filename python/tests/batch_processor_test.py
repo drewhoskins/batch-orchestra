@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sys
+
 try:
     from dataclasses import dataclass
     from typing import Any, Sequence, Optional
@@ -13,27 +14,24 @@ try:
     import temporalio.common
     import temporalio.exceptions
 
-    import batch_orchestrator
-    from batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page, temporal_client_factory
+    from batch_worker import BatchWorkerClient
+    from batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print("But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.")
     print(f"Original error: {e}")
     sys.exit(1)
 
-@temporal_client_factory
-async def make_temporal_client():
-    return await Client.connect("localhost:7233")
-
 async def run_page_processor(
         page_processor_name: str, *,
-        temporal_client_factory_name=make_temporal_client.__name__,
         env=ActivityEnvironment(),
         batch_id: Optional[str]=None, 
         did_signal_next_page: bool = False) -> Any:
+    client = await Client.connect("localhost:7233")
+    BatchWorkerClient.augment(client)
+
     return await env.run(
         process_page, 
-        temporal_client_factory_name, 
         page_processor_name, 
         batch_id, 
         BatchPage("some_cursor", 10), 
@@ -62,18 +60,6 @@ async def test_invalid_page_processor_name():
             f"your worker. Please annotate it with @page_processor and make sure its module is imported. " + \
             f"Available callables: [")
         assert "'returns_cursor'" in str(e)
-    else:
-        assert False, "Should have thrown an error."
-
-@pytest.mark.asyncio
-async def test_invalid_temporal_client_factory():
-    env = ActivityEnvironment()
-    try:
-        await env.run(process_page, 'not a callable', returns_cursor.__name__, None, BatchPage("some_cursor", 10), 0, "some_args", False)
-    except ValueError as e:
-        assert str(e) == f"You passed temporal_client_factory_name 'not a callable' into the BatchOrchestrator, but it was not registered on " + \
-            f"your worker. Please annotate it with @temporal_client_factory and make sure its module is imported. " + \
-            f"Available callables: ['make_temporal_client']"
     else:
         assert False, "Should have thrown an error."
 
@@ -160,6 +146,25 @@ async def test_cannot_enqueue_two_pages():
               "is responsible for enqueuing the following page.")
         else: 
             assert False, "Should have asserted preventing the user from calling enqueue_next_page twice."
+
+@pytest.mark.asyncio
+async def test_uninitialized_client():
+    env = ActivityEnvironment()
+    BatchWorkerClient.get_instance()._clear_temporal_client()
+    try:
+        return await env.run(
+            process_page, 
+            starts_new_page.__name__, 
+            None, 
+            BatchPage("some_cursor", 10), 
+            0, 
+            "some_args", 
+            False)
+    except ValueError as e:
+        assert str(e) == "Missing a temporal client for use by your @page_processor or @batch_tracker. " + \
+            "Make sure to call BatchWorkerClient.augment(client) and pass the resulting client into your Worker."
+    else:
+        assert False, "Should have thrown an error."
 
 if __name__ == "__main__":
     pytest.main(sys.argv)

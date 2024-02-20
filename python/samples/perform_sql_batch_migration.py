@@ -17,7 +17,7 @@ try:
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
-    from samples.inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs, make_temporal_client
+    from samples.inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs
     from samples.product_db import ProductDB
     from batch_orchestrator_io import batch_orchestrator_data_converter
 except ModuleNotFoundError as e:
@@ -67,7 +67,6 @@ Original error: {e}
         handle: temporalio.client.WorkflowHandle = await temporal_client.start_workflow(
             BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
             BatchOrchestratorInput(
-                temporal_client_factory_name=make_temporal_client.__name__,
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
                     name=inflate_product_prices.__name__, 
