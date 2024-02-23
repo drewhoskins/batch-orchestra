@@ -5,7 +5,30 @@ It solves many problems for these scenarios, such as controllably parallel execu
 
 All you have to build is a page processor to process an individual page, and optionally a progress tracker.
 
-The batch is orchestrated using a [Temporal](https://temporal.io) workflow.  Your job is to fill in an activity.
+The batch is parallelized and tracked using a [Temporal](https://temporal.io) workflow.  
+Your job is simply to fill in one function called a page processor.
+
+In python, for example, that might look something like this:
+
+    @page_processor
+    async def inflate_product_prices(context: BatchProcessorContext):
+        page = context.page
+        cursor = ProductDBCursor.from_json(page.cursor_str)
+
+        args = ConfigArgs.from_json(context.args_str)
+        products, next_cursor = MyDB.query_page(cursor, results=page.size)
+
+        if next_cursor:
+            # There's another page to process.  Kick it off.
+            await context.enqueue_next_page(
+                BatchPage(next_cursor, page.size)
+            )
+
+        # Do your operation on each item in the page
+        num_processed = 0
+        for product in products:
+            # Do some operation -- it should be idempotent if you are retrying
+            await product.do_some_operation()
 
 # Quick Start
 
@@ -17,17 +40,24 @@ Then look at the language-specific quickstart guides:
 
 # FAQ
 ## What problems does batch-orchestra help me solve?
-It's designed to iterate through a data set (e.g. CSV, database) and parallel process that data.  
+It's designed to iterate through a data set (e.g. CSV, database) and parallel process that data.
 For example, data migrations or calling an API for each item in a data set.
 
+## So, this is based on Temporal.  Why not just use Temporal directly?
+It's possible, but cumbersome, to build performant, high-scale batch solutions with Temporal, and this framework fills a niche by allowing you to 
+robustly scale relatively simple operations with 10x less code:
+![Alt text](temporal-batch-scale.png "Scale Diagram")
+
+## What features and benefits does it have?
 It helps solve many problems that tend to come up for these cases.
-* Can run in tens or hundreds of processes in parallel.
-* Eliminates unevenly-sized pages without needing to first traverse the database to find the page boundaries.
+* Can run tens or hundreds of processes in parallel.
+* Eliminates unevenly-sized pages.
+* Only scans through your database one time--no need for an initial pass to find the page boundaries.
 * Controllable parallelism to limit impact on downstream systems.
 * [coming soon] pauses and gradual throughput rampups.
-* Feature-rich retries support.
+* Feature-rich retries.
 * Built-in progress tracking.
-* Debuggable, via Temporal's UI and progress tracking.
+* Debuggable, via Temporal's UI and log statements.
 * Rich failure handling:
 ** Code deploys can fix your running batch without need for other remediations.
 ** Built-in failure and stuck pages tracking.
@@ -47,13 +77,11 @@ It's TBD to what extent this is better than other frameworks outside the Tempora
 ## What are the caveats?
 Batch Orchestra does not guarantee that items in your data set are processed in a certain order.
 
-Currently scales to roughly 500 pages, and with the default 5 minutes of processing time per page, that gives around 40 hours of processing time.  
+It currently scales to roughly 500 pages, and with the default 5 minutes of processing time per page, that gives around 40 hours of processing time.  
 Higher scale support is on the roadmap--please ask for it if you need it.  (see [Very Long Running Workflows](https://temporal.io/blog/very-long-running-workflows))
 
-Otherwise, if deciding whether to use it, think about the operation you want to apply to each item in your data set.
-* If it's "cheap" (less than a network call), this framework will be overkill--for example, if your input and output are both columnar database tables.
-* If it's complex, this framework can work, but it does not help you track the state transitions or dependencies within the operation, so code carefully.
-* If it's non-idempotent, as with any framework, you will want to make it idempotent or turn off retries if you want to be safe.
+Otherwise, think about the operation you want to apply to each item in your data set.
+If it's "complex", meaning it's stateful and difficult to make idempotent, you may instead want to run a workflow per operation or, at high throughputs, use other frameworks.
 
 # Approach:
 Batch Orchestra uses "pipelined pagination."
