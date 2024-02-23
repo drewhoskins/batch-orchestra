@@ -1,7 +1,6 @@
 from __future__ import annotations
 import sys
 
-from batch_processor import temporal_client_factory
 try:
     from asyncio import sleep
     from dataclasses import asdict, dataclass
@@ -78,7 +77,6 @@ async def test_one_page(client: Client):
     async with batch_worker(client, task_queue_name):
         before_start_time = datetime.now()
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=processes_n_items.__name__, 
                 args=MyArgs(num_items_to_process=1).to_json(), 
@@ -99,7 +97,6 @@ async def test_two_pages(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,            
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=processes_n_items.__name__, 
                 args=MyArgs(num_items_to_process=19).to_json(), 
@@ -136,7 +133,6 @@ async def test_max_parallelism(client: Client):
     async with batch_worker(client, task_queue_name):
         max_parallelism = 3
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,            
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=processes_n_items.__name__, 
                 args=MyArgs(num_items_to_process=59).to_json(), 
@@ -157,7 +153,6 @@ async def test_page_size(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=processes_n_items.__name__, 
                 args=MyArgs(num_items_to_process=49).to_json(), 
@@ -182,7 +177,6 @@ async def test_timeout(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=asserts_timeout.__name__, 
                 page_size=10, 
@@ -209,7 +203,6 @@ async def test_extended_retries(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=fails_once.__name__, 
                 page_size=10, 
@@ -236,7 +229,6 @@ async def test_ignores_subsequent_signals(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=signals_same_page_infinitely.__name__, 
                 page_size=10, 
@@ -264,7 +256,6 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
     task_queue_name = str(uuid.uuid4())
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             batch_id='my_batch',
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=fails_before_signal.__name__, 
@@ -303,7 +294,6 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
     async with batch_worker(client, task_queue_name):
         WorkflowHandle.signal = count_signal_calls(WorkflowHandle.signal)
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             batch_id='my_batch', 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=fails_after_signal.__name__,
@@ -321,10 +311,6 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
 class SomeNonRetryableException(Exception):
     pass
 
-@temporal_client_factory
-def make_temporal_client():
-    return Client.connect("localhost:7233")
-
 call_count = 0
 @page_processor
 async def fails_with_non_retryable_exception(context: BatchProcessorContext):
@@ -339,7 +325,6 @@ async def test_non_retryable_exceptions(client: Client):
     call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=fails_with_non_retryable_exception.__name__, 
                 page_size=10,
@@ -366,7 +351,6 @@ async def test_non_retryable_application_error(client: Client):
     call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             max_parallelism=3, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=fails_with_non_retryable_application_error.__name__,
@@ -397,7 +381,6 @@ async def test_timeout_then_extended_retry(client: Client):
     call_count = 0
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
-            temporal_client_factory_name=make_temporal_client.__name__,
             max_parallelism=3, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=times_out_first_time.__name__,
@@ -436,7 +419,6 @@ async def test_logging(client: Client):
 
         input = BatchOrchestratorInput(
             batch_id='my_batch',
-            temporal_client_factory_name=make_temporal_client.__name__,
             max_parallelism=10, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=spits_out_logs.__name__,
@@ -461,7 +443,6 @@ async def test_current_progress_query(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             batch_id='my_batch',
-            temporal_client_factory_name=make_temporal_client.__name__,
             max_parallelism=3, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=processes_n_items.__name__,
