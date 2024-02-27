@@ -6,12 +6,6 @@ import temporalio.client
 from temporalio.client import Client, WorkflowHandle
 from temporalio import activity
 
-from batch_orchestrator_io import batch_orchestrator_data_converter
-
-from temporalio.converter import (
-    DefaultPayloadConverter,
-)
-
 """
 BatchWorker class with configuration for the batch worker -- the processor and the tracker
 """
@@ -20,11 +14,9 @@ class BatchWorkerClient:
 
     """
     You must run this method on your worker.
-    If you get an error message like 'Unknown payload encoding text/batch-orchestrator-encoding', then you need to have run this function
-    and pass the resulting client into the Worker constructor (on your worker) or the start_workflow call (on your client).
     """
     @staticmethod
-    def augment(client: temporalio.client.Client) -> temporalio.client.Client:
+    def register(client: temporalio.client.Client) -> temporalio.client.Client:
         return BatchWorkerClient.get_instance().set_temporal_client(client).get_temporal_client()
 
     def __new__(cls):
@@ -37,7 +29,6 @@ class BatchWorkerClient:
 
     def set_temporal_client(self, client: temporalio.client.Client) -> BatchWorkerClient:
         new_config = client.config()
-        new_config["data_converter"] = batch_orchestrator_data_converter
         self._client = temporalio.client.Client(**new_config)
         return self
 
@@ -66,7 +57,7 @@ class BatchWorkerContext(ABC):
         if workflow_client is None:
             raise ValueError(
                 f"Missing a temporal client for use by your @page_processor or @batch_tracker. " + \
-                "Make sure to call BatchWorkerClient.augment(client) and pass the resulting client into your Worker.")
+                "Make sure to call BatchWorkerClient.register(client).")
         self._workflow_client: Client = workflow_client
 
     async def async_init(self)-> BatchWorkerContext:

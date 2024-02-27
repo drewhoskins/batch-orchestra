@@ -47,7 +47,6 @@ Copy your payload in.
 Some things to keep an eye on/ that I want to tackle before the initial release 
 
 * Should pass cursors as raw rather than str?
-* Is BatchOrchestratorEncodingPayloadConverter using modern best practices, and will it interfere with non-batch workflows running on the same workflow?
 * Harmonize with python-sdk and python best practices.  (What did I miss?)
 
 

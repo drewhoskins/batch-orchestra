@@ -54,7 +54,7 @@ async def env(request) -> AsyncGenerator[WorkflowEnvironment, None]:
     else:
         try:
             client = await Client.connect(env_type)
-            client = BatchWorkerClient.augment(client)
+            client = BatchWorkerClient.register(client)
         except RuntimeError as e:
             message = f"Could not connect to temporal-server at {env_type}.  Check the README.md Python Quick Start if you need guidance."
             raise RuntimeError(message) from e

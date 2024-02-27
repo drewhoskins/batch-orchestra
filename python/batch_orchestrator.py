@@ -38,10 +38,8 @@ class BatchOrchestrator:
 
     # Run this to process a batch of work with controlled parallelism and in a fault-tolerant way.
     # See the docs for BatchOrchestratorInput for customizations.
-    # You must add the 
-    # batch_orchestrator_data_converter to your client as follows:
-    # client = await Client.connect("localhost:7233", data_converter=batch_orchestrator_data_converter)
-    # Then invoke it and await for it as you would any Temporal workflow, for example: 
+    # Then invoke it and await for it as you would any Temporal workflow, for example:
+    # client = await Client.connect("localhost:7233")
     # handle = await client.start_workflow(
     #   BatchOrchestrator.run, 
     #   BatchOrchestratorInput(

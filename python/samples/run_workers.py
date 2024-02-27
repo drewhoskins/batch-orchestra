@@ -14,7 +14,6 @@ try:
     from temporalio.worker import Worker
 
     from batch_orchestrator import BatchOrchestrator, process_page
-    from batch_orchestrator_io import batch_orchestrator_data_converter
 
     # Import our registry of page processors
     import samples.inflate_product_prices_page_processor
@@ -32,11 +31,10 @@ interrupt_event = asyncio.Event()
 async def worker_async():
     logging.basicConfig(level=logging.INFO)
     # Set up the connection to temporal-server.
-    # Note that you must add a "data converter" which will marshall some of the parameters inside BatchOrchestratorInput.
     host = "localhost:7233"
     try:
         temporal_client = await Client.connect(host)
-        temporal_client = BatchWorkerClient.augment(temporal_client)
+        temporal_client = BatchWorkerClient.register(temporal_client)
     except RuntimeError as e:
         print(f"""
 Could not connect to temporal-server at {host}.  Check the README.md Python Quick Start if you need guidance.

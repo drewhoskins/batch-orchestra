@@ -33,7 +33,7 @@ async def run_page_processor(
     except RuntimeError as e:
         message = "You should be running a Temporal Server locally.  See the Quick Start in the README.md for instructions."
         raise ValueError(message) from e
-    BatchWorkerClient.augment(client)
+    BatchWorkerClient.register(client)
 
     return await env.run(
         process_page, 
@@ -171,7 +171,7 @@ async def test_uninitialized_client():
             False)
     except ValueError as e:
         assert str(e) == "Missing a temporal client for use by your @page_processor or @batch_tracker. " + \
-            "Make sure to call BatchWorkerClient.augment(client) and pass the resulting client into your Worker."
+            "Make sure to call BatchWorkerClient.register(client)."
     else:
         assert False, "Should have thrown an error."
 

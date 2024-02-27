@@ -19,7 +19,6 @@ try:
 
     from samples.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
     from samples.product_db import ProductDB
-    from batch_orchestrator_io import batch_orchestrator_data_converter
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.
@@ -39,10 +38,9 @@ Original error: {e}
 #
 async def main(num_items):
     # Set up the connection to temporal-server.
-    # Note that you must add a "data converter" which will marshall some of the parameters inside BatchOrchestratorInput.
     host = "localhost:7233"
     try:
-        temporal_client = await Client.connect(host, data_converter=batch_orchestrator_data_converter)
+        temporal_client = await Client.connect(host)
     except RuntimeError as e:
         print(f"""
 Could not connect to temporal-server at {host}.  Check the README.md Python Quick Start if you need guidance.

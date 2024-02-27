@@ -9,13 +9,6 @@ from datetime import datetime, timedelta
 import json
 from typing import Any, Dict, List, Optional, Set, Type
 
-import temporalio.converter
-from temporalio.converter import (
-    CompositePayloadConverter,
-    DataConverter,
-    DefaultPayloadConverter,
-    EncodingPayloadConverter,
-)
 from temporalio.api.common.v1 import Payload
 from temporalio.common import RetryPolicy
 
@@ -56,17 +49,11 @@ class BatchOrchestratorInput:
         # This should typically be within the drain allowance of the worker that runs your page processor.  That 
         # would allow your activity to finish in case of a graceful shutdown.
         timeout_seconds: int = 300
-        # By default we retry ten times with exponential backoff, and then if it's still failing, we'll kick
-        # it to the extended retry queue which will continue to retry indefinitely once the working pages are finished.
-        # This avoids the queue--which maxes out at max_parallelism concurrent page processors--getting filled up
-        # with failing pages for a long time and blocking progress on other pages.
-        initial_retry_policy: RetryPolicy = field(default_factory=batch_orchestrator_input_default_initial_retry_policy)
         # You should set this to false if you have a non-idempotent page processor you don't want to retry, in which case 
         # you should also set max_attempts to 1 in initial_retry_policy.
         use_extended_retries: bool = True
         # By default, retry every five minutes in perpetuity.
         extended_retry_interval_seconds: int = 300
-
 
     @dataclass(kw_only=True)
     class BatchTrackerContext:
@@ -98,55 +85,3 @@ class BatchOrchestratorProgress:
     # The second when the BatchOrchestrator workflow began executing.
     def start_time(self) -> datetime:
         return datetime.fromtimestamp(self._start_timestamp)
-
-
-class BatchOrchestratorEncodingPayloadConverter(EncodingPayloadConverter):
-    @property
-    def encoding(self) -> str:
-        return "text/batch-orchestrator-encoding"
-
-    def to_payload(self, value: Any) -> Optional[Payload]:
-        if isinstance(value, BatchOrchestratorInput):
-            dict_value = asdict(value)
-            retry_policy = dict_value["page_processor"]["initial_retry_policy"]
-            if retry_policy["initial_interval"]:
-                retry_policy["initial_interval"] = retry_policy["initial_interval"].total_seconds()
-            if retry_policy["maximum_interval"]:
-                retry_policy["maximum_interval"] = retry_policy["maximum_interval"].total_seconds()
-
-            return Payload(
-                metadata={"encoding": self.encoding.encode()},
-                data=json.dumps(dict_value).encode(),
-            )
-        else:
-            return None
-
-    def from_payload(self, payload: Payload, type_hint: Optional[Type] = None) -> Any:
-        # TODO(drewhoskins) why is this assert not working?  And how can I ensure that this dataconverter doesn't get used for other types?
-        # assert not type_hint or type_hint is BatchOrchestratorInput
-        decoded_results = json.loads(payload.data.decode())
-        retry_policy = decoded_results["page_processor"]["initial_retry_policy"]
-        if retry_policy["initial_interval"]:
-            retry_policy["initial_interval"] = timedelta(seconds=retry_policy["initial_interval"])
-        if retry_policy["maximum_interval"]:
-            retry_policy["maximum_interval"] = timedelta(seconds=retry_policy["maximum_interval"])
-        decoded_results["page_processor"]["initial_retry_policy"] = RetryPolicy(**retry_policy)
-        if "batch_tracker" in decoded_results and decoded_results["batch_tracker"] is not None:
-            decoded_results["batch_tracker"] = BatchOrchestratorInput.BatchTrackerContext(**decoded_results["batch_tracker"])
-        decoded_results["page_processor"] = BatchOrchestratorInput.PageProcessorContext(
-            **decoded_results["page_processor"]
-        )
-        return BatchOrchestratorInput(**decoded_results)
-
-
-class BatchOrchestratorPayloadConverter(CompositePayloadConverter):
-    def __init__(self) -> None:
-        # Just add ours as first before the defaults
-        super().__init__(
-            BatchOrchestratorEncodingPayloadConverter(),
-            *DefaultPayloadConverter.default_encoding_payload_converters
-        )
-
-batch_orchestrator_data_converter = DataConverter(
-    payload_converter_class=BatchOrchestratorPayloadConverter
-)
