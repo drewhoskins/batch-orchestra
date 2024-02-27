@@ -10,7 +10,7 @@ try:
     import os
     import argparse
 
-    from temporalio.client import Client
+    from temporalio.client import Client, WorkflowHandle
     from temporalio.types import MethodAsyncSingleParam
     import temporalio.service
 
@@ -64,7 +64,7 @@ Original error: {e}
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
         # Execute the migration
-        handle: temporalio.client.WorkflowHandle = await temporal_client.start_workflow(
+        handle: WorkflowHandle = await temporal_client.start_workflow(
             BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
             BatchOrchestratorInput(
                 max_parallelism=5,
