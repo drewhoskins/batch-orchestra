@@ -3,13 +3,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import inspect
 import logging
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Optional
 from enum import Enum
-from batch_worker import BatchWorkerClient, BatchWorkerContext
+from batch_worker import BatchWorkerContext
 
 from temporalio import activity
-from temporalio.client import Client, WorkflowHandle
-from temporalio.exceptions import ApplicationError
 from temporalio.common import RetryPolicy
 
 # 
@@ -59,6 +57,7 @@ class PageProcessor(ABC):
 _page_processor_registry = {}
 
 def page_processor(page_processor_class):
+    print("Importin important stuff")
     message = f"The @page_processor annotation must go on a class that subclasses batch_processor.PageProcessor, not: {page_processor_class}"
     assert inspect.isclass(page_processor_class), message
     assert issubclass(page_processor_class, PageProcessor), message
@@ -67,6 +66,15 @@ def page_processor(page_processor_class):
 
 def list_page_processors():
     return list(_page_processor_registry.keys())
+
+def get_page_processor(page_processor_class_name: str) -> PageProcessor:
+    user_provided_page_processor = _page_processor_registry.get(page_processor_class_name)
+    if not user_provided_page_processor:
+        raise ValueError(
+            f"You passed page_processor_name '{page_processor_class_name}' into the BatchOrchestrator, but it was not registered on " +
+            f"your worker. Please annotate a class inheriting from batch_processor.PageProcessor with @page_processor and make sure its module is imported. " + 
+            f"Available classes: {list_page_processors()}")
+    return user_provided_page_processor()
 
 # In your batch jobs, you'll chunk them into pages of work that run in parallel with one another. 
 # Each page, represented by this class, processes in series.
@@ -97,13 +105,8 @@ async def process_page(
         activity_info=activity.info(),
         did_signal_next_page=did_signal_next_page).async_init()
 
-    user_provided_page_processor = _page_processor_registry.get(page_processor_class_name)
-    if not user_provided_page_processor:
-        raise ValueError(
-            f"You passed page_processor_name '{page_processor_class_name}' into the BatchOrchestrator, but it was not registered on " +
-            f"your worker. Please annotate a class inheriting from batch_processor.PageProcessor with @page_processor and make sure its module is imported. " + 
-            f"Available classes: {list_page_processors()}")
-    return await user_provided_page_processor().run(context)
+    user_provided_page_processor = get_page_processor(page_processor_class_name)
+    return await user_provided_page_processor.run(context)
 
 class LoggerAdapter(activity.LoggerAdapter):
     def __init__(self, context: BatchProcessorContext) -> None:

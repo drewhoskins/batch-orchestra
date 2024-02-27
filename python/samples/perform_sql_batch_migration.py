@@ -17,7 +17,7 @@ try:
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
-    from samples.inflate_product_prices_page_processor import inflate_product_prices, ConfigArgs
+    from samples.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
     from samples.product_db import ProductDB
     from batch_orchestrator_io import batch_orchestrator_data_converter
 except ModuleNotFoundError as e:
@@ -69,7 +69,7 @@ Original error: {e}
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
-                    name=inflate_product_prices.__name__, 
+                    name=InflateProductPrices.__name__, 
                     page_size=page_size,
                     args=args.to_json())
                 ),

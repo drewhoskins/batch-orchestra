@@ -8,7 +8,7 @@ import temporalio.client
 from typing import Optional
 
 
-from batch_processor import BatchProcessorContext, BatchPage, page_processor
+from batch_processor import BatchProcessorContext, BatchPage, PageProcessor, page_processor
 from samples.product_db import ProductDB
 
 @dataclass
@@ -38,34 +38,36 @@ class ProductDBCursor:
 # Raises OperationalError if it can't acquire a lock, and then it will be retried.
 # I decided to leave this kinda flaky to show off the resilience of the BatchOrchestrator.
 @page_processor
-async def inflate_product_prices(context: BatchProcessorContext):
-    page = context.page
-    if page.cursor_str == "":
-        cursor = ProductDBCursor(key=None)
-    else:
-        cursor = ProductDBCursor.from_json(page.cursor_str)
+class InflateProductPrices(PageProcessor):
 
-    args = ConfigArgs.from_json(context.args_str)
-    db_connection = ProductDB.get_db_connection(args.db_file)
-    
-    products = ProductDB.fetch_page(db_connection, cursor.key, page.size)
+    async def run(self, context: BatchProcessorContext):
+        page = context.page
+        if page.cursor_str == "":
+            cursor = ProductDBCursor(key=None)
+        else:
+            cursor = ProductDBCursor.from_json(page.cursor_str)
 
-    if len(products) == page.size:
-        # We got a full set of results, so there are likely more pages to process
-        await context.enqueue_next_page(
-            BatchPage(ProductDBCursor(products[-1].key).to_json(), page.size)
-        )
+        args = ConfigArgs.from_json(context.args_str)
+        db_connection = ProductDB.get_db_connection(args.db_file)
+        
+        products = ProductDB.fetch_page(db_connection, cursor.key, page.size)
 
-    num_processed = 0
-    for product in products:
-        # Note that this write is idempotent, so if we have to retry something that already succeeded,
-        # we won't multiply by 1.04^2
-        await ProductDB.inflate_price(db_connection, product, 1.04)
-        await sleep(0.001)  # Simulate a network hop
-        num_processed += 1
-        # Allows the worker to context-switch, showing off parallelism when testing on systems with fewer cores.
+        if len(products) == page.size:
+            # We got a full set of results, so there are likely more pages to process
+            await context.enqueue_next_page(
+                BatchPage(ProductDBCursor(products[-1].key).to_json(), page.size)
+            )
 
-    next_page_message = f"Next page cursor = {products[-1].key}" if products else "And that's all, folks!"
-    context.logger.info(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
-    sys.stdout.flush()
-    
+        num_processed = 0
+        for product in products:
+            # Note that this write is idempotent, so if we have to retry something that already succeeded,
+            # we won't multiply by 1.04^2
+            await ProductDB.inflate_price(db_connection, product, 1.04)
+            await sleep(0.001)  # Simulate a network hop
+            num_processed += 1
+            # Allows the worker to context-switch, showing off parallelism when testing on systems with fewer cores.
+
+        next_page_message = f"Next page cursor = {products[-1].key}" if products else "And that's all, folks!"
+        context.logger.info(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
+        sys.stdout.flush()
+        

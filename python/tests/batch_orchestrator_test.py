@@ -18,7 +18,7 @@ try:
 
     from batch_processor import BatchPage
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
-    from batch_processor import BatchProcessorContext, page_processor
+    from batch_processor import BatchProcessorContext, page_processor, PageProcessor
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print("But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.")
@@ -56,8 +56,9 @@ def default_cursor():
     return MyCursor(0).to_json()
 
 @page_processor
-async def processes_one_page(context: BatchProcessorContext):
-    return context.page.cursor_str
+class ProcessesOnePage(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        return context.page.cursor_str
 
 def batch_worker(client: Client, task_queue_name: str):
     return Worker(
@@ -78,7 +79,7 @@ async def test_one_page(client: Client):
         before_start_time = datetime.now()
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=processes_n_items.__name__, 
+                name=ProcessesNItems.__name__, 
                 args=MyArgs(num_items_to_process=1).to_json(), 
                 page_size=10, 
                 first_cursor_str=default_cursor()),
@@ -98,7 +99,7 @@ async def test_two_pages(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=processes_n_items.__name__, 
+                name=ProcessesNItems.__name__, 
                 args=MyArgs(num_items_to_process=19).to_json(), 
                 page_size=10, 
                 first_cursor_str=default_cursor()),
@@ -111,20 +112,21 @@ async def test_two_pages(client: Client):
 
 
 @page_processor
-async def processes_n_items(context: BatchProcessorContext):
-    page = context.page
-    args = MyArgs.from_json(context.args_str)
-    cursor = MyCursor.from_json(page.cursor_str)
-    # Simulate whether we get an incomplete page.  If not, start a new page.
-    if cursor.i + page.size < args.num_items_to_process - 1:
-        await context.enqueue_next_page(
-            BatchPage(MyCursor(cursor.i + page.size).to_json(), size=page.size)
-        )
-        print(f"Signaled the workflow {page}")
-    print(f"Processing page {page}")
-    # pretend to do some processing
-    await sleep(0.1)
-    return cursor.i
+class ProcessesNItems(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        page = context.page
+        args = MyArgs.from_json(context.args_str)
+        cursor = MyCursor.from_json(page.cursor_str)
+        # Simulate whether we get an incomplete page.  If not, start a new page.
+        if cursor.i + page.size < args.num_items_to_process - 1:
+            await context.enqueue_next_page(
+                BatchPage(MyCursor(cursor.i + page.size).to_json(), size=page.size)
+            )
+            print(f"Signaled the workflow {page}")
+        print(f"Processing page {page}")
+        # pretend to do some processing
+        await sleep(0.1)
+        return cursor.i
 
 
 @pytest.mark.asyncio
@@ -134,7 +136,7 @@ async def test_max_parallelism(client: Client):
         max_parallelism = 3
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=processes_n_items.__name__, 
+                name=ProcessesNItems.__name__, 
                 args=MyArgs(num_items_to_process=59).to_json(), 
                 page_size=10, 
                 first_cursor_str=default_cursor()),
@@ -154,7 +156,7 @@ async def test_page_size(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=processes_n_items.__name__, 
+                name=ProcessesNItems.__name__, 
                 args=MyArgs(num_items_to_process=49).to_json(), 
                 page_size=5, 
                 first_cursor_str=default_cursor()),
@@ -167,10 +169,11 @@ async def test_page_size(client: Client):
         assert result.num_completed_pages == 10 # 9 pages * 5 items + 1 page with 4
 
 @page_processor
-async def asserts_timeout(context: BatchProcessorContext):
-    timeout = context._activity_info.start_to_close_timeout
-    assert timeout is not None
-    assert timeout.seconds == 123
+class AssertsTimeout(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        timeout = context._activity_info.start_to_close_timeout
+        assert timeout is not None
+        assert timeout.seconds == 123
 
 @pytest.mark.asyncio
 async def test_timeout(client: Client):
@@ -178,7 +181,7 @@ async def test_timeout(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=asserts_timeout.__name__, 
+                name=AssertsTimeout.__name__, 
                 page_size=10, 
                 timeout_seconds=123,
                 first_cursor_str=default_cursor()),
@@ -192,11 +195,16 @@ async def test_timeout(client: Client):
 
 did_attempt_fails_once = False
 @page_processor
-async def fails_once(context: BatchProcessorContext):
-    global did_attempt_fails_once
-    if not did_attempt_fails_once:
-        did_attempt_fails_once = True
-        raise ValueError("I failed")
+class FailsOnce(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        global did_attempt_fails_once
+        if not did_attempt_fails_once:
+            did_attempt_fails_once = True
+            raise ValueError("I failed")
+    
+    @property
+    def initial_retry_policy(self):
+        return RetryPolicy(maximum_attempts=1)
 
 @pytest.mark.asyncio
 async def test_extended_retries(client: Client):
@@ -204,11 +212,10 @@ async def test_extended_retries(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=fails_once.__name__, 
+                name=FailsOnce.__name__, 
                 page_size=10, 
                 timeout_seconds=123,
-                first_cursor_str=default_cursor(),
-                initial_retry_policy=RetryPolicy(maximum_attempts=1)
+                first_cursor_str=default_cursor()
             ),
             max_parallelism=3)
 
@@ -220,9 +227,13 @@ async def test_extended_retries(client: Client):
         assert result.num_completed_pages == 1
 
 @page_processor
-async def signals_same_page_infinitely(context: BatchProcessorContext):
-    # The batch framework should detect this and ignore subsequent signals and terminate
-    await context.enqueue_next_page(BatchPage("the everpage", 10))
+class SignalsSamePageInfinitely(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        await context.enqueue_next_page(BatchPage("the everpage", 10))
+    
+    @property
+    def initial_retry_policy(self):
+        return RetryPolicy(maximum_attempts=1)
 
 @pytest.mark.asyncio
 async def test_ignores_subsequent_signals(client: Client):
@@ -230,26 +241,32 @@ async def test_ignores_subsequent_signals(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=signals_same_page_infinitely.__name__, 
+                name=SignalsSamePageInfinitely.__name__, 
                 page_size=10, 
-                first_cursor_str="page one",
-                initial_retry_policy=RetryPolicy(maximum_attempts=1)),
+                first_cursor_str="page one"),
             max_parallelism=3,
             batch_id='my_batch')
         handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 2
+        
 
 did_attempt_fails_before_signal = False
 @page_processor
-async def fails_before_signal(context: BatchProcessorContext):
-    global did_attempt_fails_before_signal
-    should_fail = not did_attempt_fails_before_signal
-    did_attempt_fails_before_signal = True
-    if should_fail:
-        raise ValueError("I failed")
-    if context.page.cursor_str == "page one":
-        await context.enqueue_next_page(BatchPage("page two", 10))
+class FailsBeforeSignal(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        global did_attempt_fails_before_signal
+        should_fail = not did_attempt_fails_before_signal
+        did_attempt_fails_before_signal = True
+        if should_fail:
+            raise ValueError("I failed")
+        if context.page.cursor_str == "page one":
+            await context.enqueue_next_page(BatchPage("page two", 10))
+
+    @property
+    def initial_retry_policy(self):
+        return RetryPolicy(maximum_attempts=1)
+
 
 @pytest.mark.asyncio
 async def test_extended_retries_first_page_fails_before_signal(client: Client):
@@ -258,10 +275,9 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
         input = BatchOrchestratorInput(
             batch_id='my_batch',
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=fails_before_signal.__name__, 
+                name=FailsBeforeSignal.__name__, 
                 page_size=10, 
-                first_cursor_str="page one",
-                initial_retry_policy=RetryPolicy(maximum_attempts=1)
+                first_cursor_str="page one"
             ),
             max_parallelism=3)
         handle = await start_orchestrator(client, task_queue_name, input)
@@ -270,16 +286,22 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
 
 did_attempt_fails_after_signal = False
 @page_processor
-async def fails_after_signal(context: BatchProcessorContext):
-    global did_attempt_fails_after_signal
-    should_fail = not did_attempt_fails_after_signal
-    did_attempt_fails_after_signal = True
-    current_page = context.page
-    if current_page.cursor_str == "page one":
-        await context.enqueue_next_page(BatchPage("page two", current_page.size))
-    await sleep(0.1)
-    if should_fail:
-        raise ValueError("I failed")
+class FailsAfterSignal(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        global did_attempt_fails_after_signal
+        should_fail = not did_attempt_fails_after_signal
+        did_attempt_fails_after_signal = True
+        current_page = context.page
+        if current_page.cursor_str == "page one":
+            await context.enqueue_next_page(BatchPage("page two", current_page.size))
+        await sleep(0.1)
+        if should_fail:
+            raise ValueError("I failed")
+        
+    @property
+    def initial_retry_policy(self):
+        return RetryPolicy(maximum_attempts=1)
+
 
 def count_signal_calls(func):
     def wrapper(*args, **kwargs):
@@ -296,10 +318,9 @@ async def test_extended_retries_first_page_fails_after_signal(client: Client):
         input = BatchOrchestratorInput(
             batch_id='my_batch', 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=fails_after_signal.__name__,
+                name=FailsAfterSignal.__name__,
                 page_size=10,
-                first_cursor_str="page one",
-                initial_retry_policy=RetryPolicy(maximum_attempts=1)),
+                first_cursor_str="page one"),
             max_parallelism=3)
         handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
@@ -313,10 +334,16 @@ class SomeNonRetryableException(Exception):
 
 call_count = 0
 @page_processor
-async def fails_with_non_retryable_exception(context: BatchProcessorContext):
-    global call_count
-    call_count += 1
-    raise SomeNonRetryableException("I failed, please don't retry.")
+class FailsWithNonRetryableException(PageProcessor):
+
+    @property
+    def initial_retry_policy(self):
+        return RetryPolicy(non_retryable_error_types=['SomeNonRetryableException'])
+
+    async def run(self, context: BatchProcessorContext):
+        global call_count
+        call_count += 1
+        raise SomeNonRetryableException("I failed, please don't retry.")
 
 @pytest.mark.asyncio
 async def test_non_retryable_exceptions(client: Client):
@@ -326,10 +353,9 @@ async def test_non_retryable_exceptions(client: Client):
     async with batch_worker(client, task_queue_name):
         input = BatchOrchestratorInput(
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=fails_with_non_retryable_exception.__name__, 
+                name=FailsWithNonRetryableException.__name__, 
                 page_size=10,
-                first_cursor_str="page one",
-                initial_retry_policy=RetryPolicy(non_retryable_error_types=['SomeNonRetryableException'])),
+                first_cursor_str="page one"),
             max_parallelism=3)
         handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
@@ -338,11 +364,12 @@ async def test_non_retryable_exceptions(client: Client):
         assert result.num_failed_pages == 1
 
 @page_processor
-@count_signal_calls
-async def fails_with_non_retryable_application_error(context: BatchProcessorContext):
-    global call_count
-    call_count += 1
-    raise ApplicationError("I failed, please don't retry.", non_retryable=True)
+class FailsWithNonRetryableApplicationError(PageProcessor):
+    @count_signal_calls
+    async def run(self, context: BatchProcessorContext):
+        global call_count
+        call_count += 1
+        raise ApplicationError("I failed, please don't retry.", non_retryable=True)
 
 @pytest.mark.asyncio
 async def test_non_retryable_application_error(client: Client):
@@ -353,7 +380,7 @@ async def test_non_retryable_application_error(client: Client):
         input = BatchOrchestratorInput(
             max_parallelism=3, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=fails_with_non_retryable_application_error.__name__,
+                name=FailsWithNonRetryableApplicationError.__name__,
                 page_size=10,
                 first_cursor_str="page one"))
         handle = await start_orchestrator(client, task_queue_name, input)
@@ -366,13 +393,18 @@ did_attempt_times_out_first_time = False
 
 
 @page_processor
-async def times_out_first_time(context: BatchProcessorContext):
-    global call_count 
-    call_count += 1
-    global did_attempt_times_out_first_time
-    if not did_attempt_times_out_first_time:
-        did_attempt_times_out_first_time = True
-        await sleep(5)
+class TimesOutFirstTime(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        global call_count 
+        call_count += 1
+        global did_attempt_times_out_first_time
+        if not did_attempt_times_out_first_time:
+            did_attempt_times_out_first_time = True
+            await sleep(5)
+
+    @property
+    def retry_policy(self):
+        return RetryPolicy(maximum_attempts=1)
 
 @pytest.mark.asyncio
 async def test_timeout_then_extended_retry(client: Client):
@@ -383,11 +415,10 @@ async def test_timeout_then_extended_retry(client: Client):
         input = BatchOrchestratorInput(
             max_parallelism=3, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=times_out_first_time.__name__,
+                name=TimesOutFirstTime.__name__,
                 page_size=10,
                 first_cursor_str="page one",
-                timeout_seconds=1,
-                initial_retry_policy=RetryPolicy(maximum_attempts=1)))
+                timeout_seconds=1))
         handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert call_count == 2
@@ -403,8 +434,9 @@ class MyHandler(logging.Handler):
         self.records.append(record)
 
 @page_processor
-async def spits_out_logs(context: BatchProcessorContext):
-    context.logger.info("I'm processing a page")
+class SpitsOutLogs(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        context.logger.info("I'm processing a page")
 
 @pytest.mark.asyncio
 async def test_logging(client: Client):
@@ -421,7 +453,7 @@ async def test_logging(client: Client):
             batch_id='my_batch',
             max_parallelism=10, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=spits_out_logs.__name__,
+                name=SpitsOutLogs.__name__,
                 page_size=10,
                 first_cursor_str=default_cursor(),
                 args=MyArgs(num_items_to_process=19).to_json()))
@@ -445,7 +477,7 @@ async def test_current_progress_query(client: Client):
             batch_id='my_batch',
             max_parallelism=3, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=processes_n_items.__name__,
+                name=ProcessesNItems.__name__,
                 page_size=10,
                 first_cursor_str=default_cursor(),
                 args=MyArgs(num_items_to_process=19).to_json()))

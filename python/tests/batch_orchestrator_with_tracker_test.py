@@ -13,7 +13,7 @@ try:
     from temporalio.common import RetryPolicy
 
 
-    from batch_processor import BatchProcessorContext, page_processor
+    from batch_processor import BatchProcessorContext, page_processor, PageProcessor
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
     from batch_tracker import BatchTrackerContext, batch_tracker, track_batch_progress
 except ModuleNotFoundError as e:
@@ -60,14 +60,19 @@ def batch_worker(client: Client, task_queue_name: str):
 fails_first_n_tries_calls = 0
 
 @page_processor
-async def fails_first_n_tries(context: BatchProcessorContext):
-    page = context.page
-    args = MyArgs.from_json(context.args_str)
-    await sleep(1)
-    global fails_first_n_tries_calls
-    if fails_first_n_tries_calls < args.fail_until_i:
-        fails_first_n_tries_calls += 1
-        raise ValueError(f"Intentionally failed, try {fails_first_n_tries_calls}")
+class FailsFirstNTries(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        page = context.page
+        args = MyArgs.from_json(context.args_str)
+        await sleep(1)
+        global fails_first_n_tries_calls
+        if fails_first_n_tries_calls < args.fail_until_i:
+            fails_first_n_tries_calls += 1
+            raise ValueError(f"Intentionally failed, try {fails_first_n_tries_calls}")
+        
+    @property
+    def initial_retry_policy(self):
+        return RetryPolicy(maximum_attempts=2)
 
 @dataclass
 class MyBatchTrackerArgs:
@@ -105,9 +110,8 @@ async def test_tracking_polls(client: Client):
         input = BatchOrchestratorInput(
             max_parallelism=3, 
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=fails_first_n_tries.__name__,
+                name=FailsFirstNTries.__name__,
                 args=MyArgs(fail_until_i=5).to_json(),
-                initial_retry_policy=RetryPolicy(maximum_attempts=2),
                 extended_retry_interval_seconds=1,
                 first_cursor_str=default_cursor(),
                 page_size=10),
@@ -137,7 +141,7 @@ async def test_tracker_can_be_canceled(client: Client):
         input = BatchOrchestratorInput(
             max_parallelism=3,
             page_processor=BatchOrchestratorInput.PageProcessorContext(
-                name=fails_first_n_tries.__name__,
+                name=FailsFirstNTries.__name__,
                 page_size=10,
                 args=MyArgs(fail_until_i=0).to_json(),
                 extended_retry_interval_seconds=2,

@@ -9,10 +9,11 @@ from typing import Any, Dict, List, Optional, Set
 import inflect
 
 from temporalio import workflow
+import temporalio
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError, CancelledError
 
-from batch_processor import list_page_processors
+from batch_processor import PageProcessor, get_page_processor, list_page_processors
 from batch_processor import BatchPage, process_page
 from batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
 from batch_tracker import track_batch_progress
@@ -27,11 +28,12 @@ from batch_tracker import track_batch_progress
 #   * Will run on a Temporal worker as a workflow--but you don't have to write the workflow yourself!  
 #     You can start it from your client as you would any workflow.
 #     See the [Temporal Python SDK docs](https://docs.temporal.io/dev-guide/python) for more details.
-#   * Your main work will be to implement a @page_processor, so see batch_processor.py for more details.
+#   * Your main work will be to implement a @page_processor, so see     batch_processor.py for more details.
 #   * All configuration and customization is passed in with BatchOrchestratorInput.
 
-# Pages through a large dataset and executes it with controllable parallelism.  
-@workflow.defn
+# Sandbox is off so we can import the user's @page_processor classes.  We might could make this more selective
+# (and therefore safe) by allowing the user to specify modules to import.
+@workflow.defn(sandboxed=False) 
 class BatchOrchestrator:
 
     # Run this to process a batch of work with controlled parallelism and in a fault-tolerant way.
@@ -306,11 +308,12 @@ class BatchOrchestrator:
                 self.page_tracker.on_page_enqueued(page_num)
   
         def is_non_retryable(self, exception: BaseException) -> bool:
+            page_processor = get_page_processor(self.input.page_processor.name)
             if isinstance(exception, ApplicationError):
                 if exception.non_retryable:
                     return True
                 users_exception_type_str = exception.type
-                return users_exception_type_str in (self.input.page_processor.initial_retry_policy.non_retryable_error_types or set())
+                return users_exception_type_str in (page_processor.initial_retry_policy.non_retryable_error_types or set())
             else:
                 return False
 
@@ -353,11 +356,13 @@ class BatchOrchestrator:
             page = enqueued_page.page
             page_num = enqueued_page.page_num
             already_tried = enqueued_page.last_exception is not None
+            page_processor = get_page_processor(self.input.page_processor.name)
+
             future = workflow.start_activity(
                 process_page, 
                 args=[self.input.page_processor.name, self.input.batch_id, page, page_num, self.input.page_processor.args, enqueued_page.did_signal_next_page], 
                 start_to_close_timeout=timedelta(seconds=self.input.page_processor.timeout_seconds),
-                retry_policy=self._build_retry_policy(already_tried)
+                retry_policy=self._build_retry_policy(page_processor, already_tried)
                 )
             future.add_done_callback(
                 lambda future: self.on_page_processed(future, page_num, page))
@@ -382,16 +387,16 @@ class BatchOrchestrator:
                             "the workflow history is getting too big.  Consider using a larger page size.  Please also reach out " +\
                             "to request higher scale.")
 
-        def _build_retry_policy(self, is_extended_retries: bool) -> RetryPolicy:
+        def _build_retry_policy(self, page_processor: PageProcessor, is_extended_retries: bool) -> RetryPolicy:
             if is_extended_retries:
                 return RetryPolicy(
                     backoff_coefficient=1.0,
                     initial_interval=timedelta(seconds=self.input.page_processor.extended_retry_interval_seconds),
-                    non_retryable_error_types=self.input.page_processor.initial_retry_policy.non_retryable_error_types,
+                    non_retryable_error_types=page_processor.initial_retry_policy.non_retryable_error_types,
                     maximum_attempts=0 # Infinite
                     )
             else:
-                return self.input.page_processor.initial_retry_policy
+                return page_processor.initial_retry_policy
 
     def _run_init(self, input: BatchOrchestratorInput) -> None:
         self.input = input
