@@ -1,5 +1,7 @@
 from __future__ import annotations
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import inspect
 import logging
 from typing import Any, Awaitable, Callable, Optional
 from enum import Enum
@@ -8,6 +10,7 @@ from batch_worker import BatchWorkerClient, BatchWorkerContext
 from temporalio import activity
 from temporalio.client import Client, WorkflowHandle
 from temporalio.exceptions import ApplicationError
+from temporalio.common import RetryPolicy
 
 # 
 # batch_processor library
@@ -28,14 +31,39 @@ from temporalio.exceptions import ApplicationError
 #   * It must first call BatchProcessorContext.enqueue_next_page() to enqueue the next page of work before it processes the contents of the page.
 #     this will allow pages to be executed in parallel.
 
+class PageProcessor(ABC):
+
+    # class RetryMode(Enum):
+    #     EXECUTE_AT_LEAST_ONCE = 1
+    #     EXECUTE_AT_MOST_ONCE = 2
+
+    # @abstractmethod 
+    # @property
+    # def retry_mode(self):
+    #     pass
+
+    @abstractmethod
+    async def run(self, context: BatchProcessorContext):
+        pass
+
+    # By default we retry ten times with exponential backoff, and then if it's still failing, we'll kick
+    # it to the extended retry queue which will continue to retry indefinitely once the working pages are finished.
+    # This avoids the queue--which maxes out at max_parallelism concurrent page processors--getting filled up
+    # with failing pages for a long time and blocking progress on other pages.
+    @property
+    def initial_retry_policy(self):
+        return RetryPolicy(maximum_attempts=10)
 
 # The Registry
 # You must declare your page processor functions with the @page_processor to allow the batch orchestrator to find them safely.
 _page_processor_registry = {}
 
-def page_processor(page_processor_function):
-    _page_processor_registry[page_processor_function.__name__] = page_processor_function
-    return page_processor_function
+def page_processor(page_processor_class):
+    message = f"The @page_processor annotation must go on a class that subclasses batch_processor.PageProcessor, not: {page_processor_class}"
+    assert inspect.isclass(page_processor_class), message
+    assert issubclass(page_processor_class, PageProcessor), message
+    _page_processor_registry[page_processor_class.__name__] = page_processor_class
+    return page_processor_class
 
 def list_page_processors():
     return list(_page_processor_registry.keys())
@@ -55,7 +83,7 @@ class BatchPage:
 # Returns whatever the page processor returns, which should be serialized or serializable (perhaps using a temporal data converter)
 @activity.defn
 async def process_page(
-    batch_page_processor_name: str, 
+    page_processor_class_name: str, 
     batch_id: Optional[str], 
     page: BatchPage, 
     page_num: int, 
@@ -69,13 +97,13 @@ async def process_page(
         activity_info=activity.info(),
         did_signal_next_page=did_signal_next_page).async_init()
 
-    user_provided_page_processor = _page_processor_registry.get(batch_page_processor_name)
+    user_provided_page_processor = _page_processor_registry.get(page_processor_class_name)
     if not user_provided_page_processor:
         raise ValueError(
-            f"You passed page_processor_name '{batch_page_processor_name}' into the BatchOrchestrator, but it was not registered on " +
-            f"your worker. Please annotate it with @page_processor and make sure its module is imported. " + 
-            f"Available callables: {list_page_processors()}")
-    return await user_provided_page_processor(context)
+            f"You passed page_processor_name '{page_processor_class_name}' into the BatchOrchestrator, but it was not registered on " +
+            f"your worker. Please annotate a class inheriting from batch_processor.PageProcessor with @page_processor and make sure its module is imported. " + 
+            f"Available classes: {list_page_processors()}")
+    return await user_provided_page_processor().run(context)
 
 class LoggerAdapter(activity.LoggerAdapter):
     def __init__(self, context: BatchProcessorContext) -> None:
