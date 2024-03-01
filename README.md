@@ -1,17 +1,16 @@
 # Batch Orchestra
 
-Batch Orchestra is an easy-to-use library for reliably and scalably performing many like operations.
-It solves many problems for these scenarios, such as controllably parallel execution and fair pagination.  See a full list of features below.
+Batch Orchestra is an easy-to-use library for reliably and scalably performing many like operations such as DB migrations and periodic batch jobs.
+It solves many problems for these scenarios, such as controllably parallel execution, fair pagination.  See a full list of features below.
 
-All you have to build is a page processor to process an individual page, and optionally a progress tracker.
+All you have to build is a page processor to process an individual page, and optionally a custom progress tracker.
 
-The batch is parallelized and tracked using a [Temporal](https://temporal.io) workflow.  
-Your job is simply to fill in one function called a page processor.
+In python, for example, that your page processor look something like this:
 
-In python, for example, that might look something like this:
+@page_processor
+class InflateProductPrices(PageProcessor):
 
-    @page_processor
-    async def inflate_product_prices(context: BatchProcessorContext):
+    async def run(self, context: BatchProcessorContext):
         page = context.page
         cursor = ProductDBCursor.from_json(page.cursor_str)
 
@@ -25,10 +24,20 @@ In python, for example, that might look something like this:
             )
 
         # Do your operation on each item in the page
-        num_processed = 0
         for product in products:
             # Do some operation -- it should be idempotent if you are retrying
             await product.do_some_operation()
+
+    # Specify whether you want your processor to retry after failures.  Retries are recommended,
+    # but you should generally make sure your operations are idempotent.
+    @property
+    def retry_mode(self) -> PageProcessor.RetryMode:
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+That's it!  There's more customization you can do as well.
+
+The batch is parallelized and tracked using a [Temporal](https://temporal.io) workflow.
+
 
 # Quick Start
 

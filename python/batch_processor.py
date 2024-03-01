@@ -72,7 +72,7 @@ class PageProcessor(ABC):
     def extended_retry_interval_seconds(self) -> int:
         # Having exhausted the (by default, 10) initial retries:
         # By default, retry five minutes after a failure or timeout, in perpetuity.
-        # Choose whatever you want, balancing spamminess and cost with responsiveness after a fix.
+        # Choose whatever you want, balancing spamminess and cost with responsiveness of getting unstuck after (say) pushing a code patch.
         return 300
     
     def _validate(self):

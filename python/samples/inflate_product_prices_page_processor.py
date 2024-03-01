@@ -71,3 +71,6 @@ class InflateProductPrices(PageProcessor):
         context.logger.info(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
         sys.stdout.flush()
         
+    @property
+    def retry_mode(self) -> PageProcessor.RetryMode:
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
