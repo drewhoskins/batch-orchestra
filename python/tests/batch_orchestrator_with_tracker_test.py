@@ -71,8 +71,16 @@ class FailsFirstNTries(PageProcessor):
             raise ValueError(f"Intentionally failed, try {fails_first_n_tries_calls}")
         
     @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+    @property
     def initial_retry_policy(self):
         return RetryPolicy(maximum_attempts=2)
+    
+    @property 
+    def extended_retry_interval_seconds(self) -> int:
+        return 1 # For a fast test
 
 @dataclass
 class MyBatchTrackerArgs:
@@ -112,7 +120,6 @@ async def test_tracking_polls(client: Client):
             page_processor=BatchOrchestratorInput.PageProcessorContext(
                 name=FailsFirstNTries.__name__,
                 args=MyArgs(fail_until_i=5).to_json(),
-                extended_retry_interval_seconds=1,
                 first_cursor_str=default_cursor(),
                 page_size=10),
             batch_tracker=BatchOrchestratorInput.BatchTrackerContext(
@@ -144,7 +151,6 @@ async def test_tracker_can_be_canceled(client: Client):
                 name=FailsFirstNTries.__name__,
                 page_size=10,
                 args=MyArgs(fail_until_i=0).to_json(),
-                extended_retry_interval_seconds=2,
                 first_cursor_str=default_cursor()),
             batch_tracker=BatchOrchestratorInput.BatchTrackerContext(
                 name=my_tracker.__name__,

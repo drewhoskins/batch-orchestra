@@ -133,5 +133,5 @@ async def test_uninitialized_client():
         await env.run(track_batch_progress, polls_for_stuck_pages.__name__, 'my_batch_id', None)
     except ValueError as e:
         assert str(e) == "Missing a temporal client for use by your @page_processor or @batch_tracker. " + \
-            "Make sure to call BatchWorkerClient.register(client) and pass the resulting client into your Worker."
+            "Make sure to call BatchWorkerClient.register(client)."
 

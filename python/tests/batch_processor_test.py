@@ -50,6 +50,10 @@ class ReturnsCursor(PageProcessor):
         assert context.args_str == "some_args"
         return context.page.cursor_str
 
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
 
 @pytest.mark.asyncio
 async def test_page_processor():
@@ -75,6 +79,11 @@ class StartsNewPage(PageProcessor):
         page = context.page
         next_page = BatchPage(page.cursor_str + "_the_second", page.size)
         await context.enqueue_next_page(next_page)
+
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
 
 async def on_signal(
         parent_workflow,
@@ -133,10 +142,19 @@ class AttemptsToSignalTwice(PageProcessor):
         await context.enqueue_next_page(BatchPage("second_cursor", current_page.size))
         await context.enqueue_next_page(BatchPage("third_cursor", current_page.size))
 
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+
 @page_processor
 class ChecksBatchID(PageProcessor):
     async def run(self, context: BatchProcessorContext):
         assert context.batch_id == "my_batch_id"
+
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
 
 @pytest.mark.asyncio
 async def test_batch_id():
@@ -174,6 +192,47 @@ async def test_uninitialized_client():
             "Make sure to call BatchWorkerClient.register(client)."
     else:
         assert False, "Should have thrown an error."
+
+@page_processor
+class TooManyRetries(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        raise ValueError("I'm a bad page processor.")
+
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_MOST_ONCE
+    
+    @property
+    def initial_retry_policy(self):
+        return temporalio.common.RetryPolicy(maximum_attempts=2)
+    
+@pytest.mark.asyncio
+async def test_invalid_config_too_many_retries():
+    try:
+        await run_page_processor(TooManyRetries)
+    except ValueError as e:
+        assert str(e) == f"@page_processor TooManyRetries: You cannot set initial_retry_policy.maximum_attempts to anything other than 1 (got 2) for retry_mode EXECUTE_AT_MOST_ONCE."
+
+@page_processor
+class ExtendedRetriesWithNoRetries(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        raise ValueError("I'm a bad page processor.")
+
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_MOST_ONCE
+    
+    @property
+    def use_extended_retries(self):
+        return True
+    
+@pytest.mark.asyncio
+async def test_invalid_config_extended_retries_and_at_most_once():
+    try:
+        await run_page_processor(ExtendedRetriesWithNoRetries)
+    except ValueError as e:
+        assert str(e) == f"@page_processor ExtendedRetriesWithNoRetries: You cannot set use_extended_retries for retry_mode EXECUTE_AT_MOST_ONCE."
+
 
 if __name__ == "__main__":
     pytest.main(sys.argv)

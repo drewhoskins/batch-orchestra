@@ -49,11 +49,6 @@ class BatchOrchestratorInput:
         # This should typically be within the drain allowance of the worker that runs your page processor.  That 
         # would allow your activity to finish in case of a graceful shutdown.
         timeout_seconds: int = 300
-        # You should set this to false if you have a non-idempotent page processor you don't want to retry, in which case 
-        # you should also set max_attempts to 1 in initial_retry_policy.
-        use_extended_retries: bool = True
-        # By default, retry every five minutes in perpetuity.
-        extended_retry_interval_seconds: int = 300
 
     @dataclass(kw_only=True)
     class BatchTrackerContext:

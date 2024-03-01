@@ -31,33 +31,64 @@ from temporalio.common import RetryPolicy
 
 class PageProcessor(ABC):
 
-    # class RetryMode(Enum):
-    #     EXECUTE_AT_LEAST_ONCE = 1
-    #     EXECUTE_AT_MOST_ONCE = 2
+    def __init__(self) -> None:
+        self._validate()
 
-    # @abstractmethod 
-    # @property
-    # def retry_mode(self):
-    #     pass
+    class RetryMode(Enum):
+        # (RECOMMENDED).  Your page processor should be idempotent or you should be comfortable with the possibility of it running more than once.  
+        # Please test the idempotency of your operation (ie run it twice in a test and make sure the output is the same both times).
+        EXECUTE_AT_LEAST_ONCE = 1
+        # Your page processor may not execute or may fail permanently.
+        EXECUTE_AT_MOST_ONCE = 2
+
+    # You must choose whether your page processor can be retried in the event of a failure or timeout.
+    @property
+    @abstractmethod 
+    def retry_mode(self):
+        pass
 
     @abstractmethod
     async def run(self, context: BatchProcessorContext):
         pass
 
     # By default we retry ten times with exponential backoff, and then if it's still failing, we'll kick
-    # it to the extended retry queue which will continue to retry indefinitely once the working pages are finished.
-    # This avoids the queue--which maxes out at max_parallelism concurrent page processors--getting filled up
-    # with failing pages for a long time and blocking progress on other pages.
+    # it to the extended retry queue (see the comment on use_extended_retries) 
     @property
     def initial_retry_policy(self):
-        return RetryPolicy(maximum_attempts=10)
+        if self.retry_mode == PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE:
+            return RetryPolicy(maximum_attempts=10)
+        else:
+            return RetryPolicy(maximum_attempts=1)
+
+    # Extended retries happen once we've exhausted the initial_retry_policy for all pages in the batch.
+    # They continue indefinitely at extended_retry_interval_seconds.
+    # This prevents stuck pages from "gumming up" the queue (which has a max_parallelism) and blocking progress on other pages.
+    # You can set this to false if you want to stop retrying after initial_retry_policy is exhausted.
+    @property
+    def use_extended_retries(self):
+        return self.retry_mode == PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+    @property
+    def extended_retry_interval_seconds(self) -> int:
+        # Having exhausted the (by default, 10) initial retries:
+        # By default, retry five minutes after a failure or timeout, in perpetuity.
+        # Choose whatever you want, balancing spamminess and cost with responsiveness after a fix.
+        return 300
+    
+    def _validate(self):
+        if self.retry_mode == PageProcessor.RetryMode.EXECUTE_AT_MOST_ONCE:
+            if self.use_extended_retries:
+                raise ValueError(f"@page_processor {self.__class__.__name__}: You cannot set use_extended_retries for retry_mode EXECUTE_AT_MOST_ONCE.")
+            if self.initial_retry_policy.maximum_attempts != 1:
+                raise ValueError(
+                    f"@page_processor {self.__class__.__name__}: You cannot set initial_retry_policy.maximum_attempts to anything other than 1 " +
+                    f"(got {self.initial_retry_policy.maximum_attempts}) for retry_mode EXECUTE_AT_MOST_ONCE.")
 
 # The Registry
 # You must declare your page processor functions with the @page_processor to allow the batch orchestrator to find them safely.
 _page_processor_registry = {}
 
 def page_processor(page_processor_class):
-    print("Importin important stuff")
     message = f"The @page_processor annotation must go on a class that subclasses batch_processor.PageProcessor, not: {page_processor_class}"
     assert inspect.isclass(page_processor_class), message
     assert issubclass(page_processor_class, PageProcessor), message

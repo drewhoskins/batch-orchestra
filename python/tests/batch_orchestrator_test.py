@@ -9,10 +9,11 @@ try:
     from unittest.mock import patch
     import pytest
     import uuid
-    from datetime import datetime
+    from datetime import datetime, timedelta
+    from typing import Optional
 
     from temporalio.common import RetryPolicy
-    from temporalio.client import Client, WorkflowHandle
+    from temporalio.client import Client, WorkflowHandle, WorkflowFailureError
     from temporalio.worker import Worker
     from temporalio.exceptions import ApplicationError
 
@@ -25,10 +26,10 @@ except ModuleNotFoundError as e:
     print(f"Original error: {e}")
     sys.exit(1)
 
-async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput)-> WorkflowHandle:
+async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput, *, run_timeout: Optional[timedelta] = None)-> WorkflowHandle:
     return await client.start_workflow(
         BatchOrchestrator.run, # type: ignore (unclear why this is necessary, but mypy complains without it.)
-        input, id=str(uuid.uuid4()), task_queue=task_queue_name)
+        input, id=str(uuid.uuid4()), task_queue=task_queue_name, run_timeout=run_timeout)
 
 @dataclass
 class MyCursor:
@@ -127,6 +128,10 @@ class ProcessesNItems(PageProcessor):
         # pretend to do some processing
         await sleep(0.1)
         return cursor.i
+    
+    @property
+    def retry_mode(self):    
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
 
 
 @pytest.mark.asyncio
@@ -174,6 +179,11 @@ class AssertsTimeout(PageProcessor):
         timeout = context._activity_info.start_to_close_timeout
         assert timeout is not None
         assert timeout.seconds == 123
+    
+    @property
+    def retry_mode(self):    
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
 
 @pytest.mark.asyncio
 async def test_timeout(client: Client):
@@ -203,8 +213,14 @@ class FailsOnce(PageProcessor):
             raise ValueError("I failed")
     
     @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+    # Kick in extended retries immediately to make the test run faster
+    @property
     def initial_retry_policy(self):
         return RetryPolicy(maximum_attempts=1)
+    
 
 @pytest.mark.asyncio
 async def test_extended_retries(client: Client):
@@ -232,8 +248,8 @@ class SignalsSamePageInfinitely(PageProcessor):
         await context.enqueue_next_page(BatchPage("the everpage", 10))
     
     @property
-    def initial_retry_policy(self):
-        return RetryPolicy(maximum_attempts=1)
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
 
 @pytest.mark.asyncio
 async def test_ignores_subsequent_signals(client: Client):
@@ -264,9 +280,13 @@ class FailsBeforeSignal(PageProcessor):
             await context.enqueue_next_page(BatchPage("page two", 10))
 
     @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+   
+    # Kick in extended retries immediately to make the test run faster
+    @property
     def initial_retry_policy(self):
         return RetryPolicy(maximum_attempts=1)
-
 
 @pytest.mark.asyncio
 async def test_extended_retries_first_page_fails_before_signal(client: Client):
@@ -284,6 +304,36 @@ async def test_extended_retries_first_page_fails_before_signal(client: Client):
         result = await handle.result()
         assert result.num_completed_pages == 2
 
+@page_processor
+class TwoPagesOneFailsNoRetries(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        if context.page.cursor_str == "page one":
+            await context.enqueue_next_page(BatchPage("page two", 10))
+            raise ValueError("I failed")
+        
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_MOST_ONCE
+
+@pytest.mark.asyncio
+async def test_no_retries(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            batch_id='my_batch',
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=TwoPagesOneFailsNoRetries.__name__, 
+                page_size=10, 
+                first_cursor_str="page one"
+            ),
+            max_parallelism=3)
+        handle = await start_orchestrator(client, task_queue_name, input)
+        result = await handle.result()
+        # The first page signals for another page, then fails.  Second page succeeds.
+        assert result.num_failed_pages == 1
+        assert result.num_completed_pages == 1
+
+
 did_attempt_fails_after_signal = False
 @page_processor
 class FailsAfterSignal(PageProcessor):
@@ -297,11 +347,15 @@ class FailsAfterSignal(PageProcessor):
         await sleep(0.1)
         if should_fail:
             raise ValueError("I failed")
-        
+    
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+    # Kick in extended retries immediately to make the test run faster
     @property
     def initial_retry_policy(self):
         return RetryPolicy(maximum_attempts=1)
-
 
 def count_signal_calls(func):
     def wrapper(*args, **kwargs):
@@ -337,6 +391,10 @@ call_count = 0
 class FailsWithNonRetryableException(PageProcessor):
 
     @property
+    def retry_mode(self):    
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+    @property
     def initial_retry_policy(self):
         return RetryPolicy(non_retryable_error_types=['SomeNonRetryableException'])
 
@@ -370,6 +428,11 @@ class FailsWithNonRetryableApplicationError(PageProcessor):
         global call_count
         call_count += 1
         raise ApplicationError("I failed, please don't retry.", non_retryable=True)
+    
+    @property
+    def retry_mode(self):    
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
 
 @pytest.mark.asyncio
 async def test_non_retryable_application_error(client: Client):
@@ -403,7 +466,12 @@ class TimesOutFirstTime(PageProcessor):
             await sleep(5)
 
     @property
-    def retry_policy(self):
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+
+    # Kick in extended retries immediately to make the test run faster
+    @property
+    def initial_retry_policy(self):
         return RetryPolicy(maximum_attempts=1)
 
 @pytest.mark.asyncio
@@ -425,6 +493,110 @@ async def test_timeout_then_extended_retry(client: Client):
         assert result.num_completed_pages == 1
         assert result.num_failed_pages == 0
 
+@page_processor
+class TwoRetriesNoExtended(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        global call_count 
+        call_count += 1
+        raise ValueError("I failed")
+    
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+    
+    @property
+    def initial_retry_policy(self):
+        # something low to make the test run faster
+        return RetryPolicy(maximum_attempts=2, backoff_coefficient=1.0)
+
+    @property
+    def use_extended_retries(self):
+        return False
+
+@pytest.mark.asyncio
+async def test_no_extended_retries(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    global call_count
+    call_count = 0
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            max_parallelism=3,
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=TwoRetriesNoExtended.__name__,
+                page_size=10,
+                first_cursor_str="page one"))
+        handle = await start_orchestrator(client, task_queue_name, input)
+        result = await handle.result()
+        assert result.num_completed_pages == 0
+        assert result.num_failed_pages == 1
+        assert call_count == 2
+
+@page_processor
+class FailsPermanently(PageProcessor):
+    async def run(self, context: BatchProcessorContext):
+        global call_count 
+        call_count += 1
+        raise ValueError("I failed")
+    
+    @property
+    def retry_mode(self):
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+    
+    @property
+    def extended_retry_interval_seconds(self) -> int:
+        return 1
+
+    @property
+    def initial_retry_policy(self):
+        # something low to make the test run faster
+        return RetryPolicy(maximum_attempts=1)
+
+@pytest.mark.asyncio
+async def test_extended_retries_infinitely_and_times_out(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    global call_count
+    call_count = 0
+
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            max_parallelism=3,
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=FailsPermanently.__name__,
+                page_size=10,
+                first_cursor_str="page one"))
+        # Users may set the workflow to timeout, which isn't recommended but happens.
+        handle = await start_orchestrator(client, task_queue_name, input, run_timeout=timedelta(seconds=10))
+        try:
+            result = await handle.result()
+        except WorkflowFailureError as e:
+            # Sometimes, the workflow execution times out, but sometimes it seems temporal times the activity out 
+            # and lets the workflow recover.
+            assert "Workflow timed out" in str(e.__cause__)
+        else:
+            assert result.num_completed_pages == 0
+            assert result.num_failed_pages == 1
+        finally:
+            # How to test that it would retry forever?
+            # 4 calls = 1 for the original plus 3 extended retries.  Presumably 3 is a clue it will keep going.
+            assert call_count >= 4
+
+
+@pytest.mark.asyncio
+async def test_workflow_times_out(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            max_parallelism=3,
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=ProcessesNItems.__name__,
+                page_size=10,
+                first_cursor_str=default_cursor(),
+                args=MyArgs(num_items_to_process=19).to_json()))
+        handle = await start_orchestrator(client, task_queue_name, input, run_timeout=timedelta(seconds=1))
+        with pytest.raises(WorkflowFailureError) as e:
+            await handle.result()
+        assert "Workflow execution timed out" in str(e.value)
+
 class MyHandler(logging.Handler):
     def __init__(self):
         super().__init__()
@@ -437,6 +609,10 @@ class MyHandler(logging.Handler):
 class SpitsOutLogs(PageProcessor):
     async def run(self, context: BatchProcessorContext):
         context.logger.info("I'm processing a page")
+
+    @property
+    def retry_mode(self):    
+        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
 
 @pytest.mark.asyncio
 async def test_logging(client: Client):
