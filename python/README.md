@@ -52,8 +52,8 @@ Some things to keep an eye on/ that I want to tackle before the initial release
 
 # Roadmap
 * Error handling
-** Call a handler when there are initial failures, to be used for notifications and such.
-** Allow users to designate individual records as failures and proceed with the rest of their page.
-* Huge batches that span multiple workflow histories.  Likely will use child workflows.
-** Log batch_id
+  * Call a handler when there are initial failures, to be used for notifications and such.
+  * Allow users to designate individual records as failures and proceed with the rest of their page.
+* Huge batches that span multiple workflow histories.  Likely will use child workflows or continue-as-new.
+  * Log batch_id
 * A signal that allows changing max_parallelism.  This will allow pausing and controlled rampup.

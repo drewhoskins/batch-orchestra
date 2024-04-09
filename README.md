@@ -7,32 +7,32 @@ All you have to build is a page processor to process an individual page, and opt
 
 In python, for example, that your page processor look something like this:
 
-@page_processor
-class InflateProductPrices(PageProcessor):
+    @page_processor
+    class InflateProductPrices(PageProcessor):
 
-    async def run(self, context: BatchProcessorContext):
-        page = context.page
-        cursor = ProductDBCursor.from_json(page.cursor_str)
+        async def run(self, context: BatchProcessorContext):
+            page = context.page
+            cursor = ProductDBCursor.from_json(page.cursor_str)
 
-        args = ConfigArgs.from_json(context.args_str)
-        products, next_cursor = MyDB.query_page(cursor, results=page.size)
+            args = ConfigArgs.from_json(context.args_str)
+            products, next_cursor = MyDB.query_page(cursor, results=page.size)
 
-        if next_cursor:
-            # There's another page to process.  Kick it off.
-            await context.enqueue_next_page(
-                BatchPage(next_cursor, page.size)
-            )
+            if next_cursor:
+                # There's another page to process.  Kick it off.
+                await context.enqueue_next_page(
+                    BatchPage(next_cursor, page.size)
+                )
 
-        # Do your operation on each item in the page
-        for product in products:
-            # Do some operation -- it should be idempotent if you are retrying
-            await product.do_some_operation()
+            # Do your operation on each item in the page
+            for product in products:
+                # Do some operation -- it should be idempotent if you are retrying
+                await product.do_some_operation()
 
-    # Specify whether you want your processor to retry after failures.  Retries are recommended,
-    # but you should generally make sure your operations are idempotent.
-    @property
-    def retry_mode(self) -> PageProcessor.RetryMode:
-        return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
+        # Specify whether you want your processor to retry after failures.  Retries are recommended,
+        # but you should generally make sure your operations are idempotent.
+        @property
+        def retry_mode(self) -> PageProcessor.RetryMode:
+            return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
 
 That's it!  There's more customization you can do as well.
 
