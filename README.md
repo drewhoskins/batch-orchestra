@@ -55,7 +55,7 @@ For example, data migrations or calling an API for each item in a data set.
 ## So, this is based on Temporal.  Why not just use Temporal directly?
 It's possible, but cumbersome, to build performant, high-scale batch solutions with Temporal, and this framework fills a niche by allowing you to 
 robustly scale relatively simple operations with 10x less code:
-![Alt text](temporal-batch-scale.png "Scale Diagram")
+![Alt text](batch-orchestra-scale.png "Scale Diagram")
 
 ## What features and benefits does it have?
 It helps solve many problems that tend to come up for these cases.
