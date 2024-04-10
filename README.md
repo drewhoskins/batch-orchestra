@@ -49,16 +49,19 @@ Then look at the language-specific quickstart guides:
 
 # FAQ
 ## What problems does batch-orchestra help me solve?
-It's designed to iterate through a data set (e.g. CSV, database) and parallel process that data.
-For example, data migrations or calling an API for each item in a data set.
+It's designed to iterate through a data set (e.g. CSV, database) of any scale and parallel process that data.
+Operations should be relatively simple, such as migrating records or calling an API for each item in a data set.
 
-## So, this is based on Temporal.  Why not just use Temporal directly?
-It's possible, but cumbersome, to build performant, high-scale batch solutions with Temporal, and this framework fills a niche by allowing you to 
-robustly scale relatively simple operations with 10x less code:
+## So, this is based on Temporal.  Why not just use the Temporal SDK directly?
+Temporal's SDKs were not built with batching primarily in mind.  
+The straightforward patterns are either single-threaded ([Java sample](https://github.com/search?q=repo%3Atemporalio%2Fsamples-java%20HeartbeatingActivityBatchWorkflowImpl&type=code)) or parallel-but-expensive ([Java sample](https://github.com/search?q=repo%3Atemporalio%2Fsamples-java%20IteratorBatchWorkflowImpl&type=code)).
+Batch Orchestra is particularly useful for high-scale, low-complexity operations:
 ![Alt text](batch-orchestra-scale.png "Scale Diagram")
 
+It also provides many useful features out of the box that would be too time-consuming for most teams to build themselves.
+
 ## What features and benefits does it have?
-It helps solve many problems that tend to come up for these cases.
+It helps solve many problems that tend to come up for batch jobs.
 * Can run tens or hundreds of processes in parallel.
 * Eliminates unevenly-sized pages.
 * Only scans through your database one time--no need for an initial pass to find the page boundaries.
