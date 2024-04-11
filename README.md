@@ -71,10 +71,10 @@ It helps solve many problems that tend to come up for batch jobs.
 * Built-in progress tracking.
 * Debuggable, via Temporal's UI and log statements.
 * Rich failure handling:
-** Code deploys can fix your running batch without need for other remediations.
-** Built-in failure and stuck pages tracking.
-** Stuck pages do not block overall progress on other pages.
-** [coming soon] Allows you to avoid head-of-line blocking.
+  * Code deploys can fix your running batch without need for other remediations.
+  * Built-in failure and stuck pages tracking.
+  * Stuck pages do not block overall progress on other pages.
+  * [coming soon] Allows you to avoid head-of-line blocking.
 
 Check out the ![samples](./python/samples/README.md) to get a better idea.
 
