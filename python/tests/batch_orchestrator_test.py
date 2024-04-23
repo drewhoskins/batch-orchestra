@@ -16,6 +16,7 @@ try:
     from temporalio.client import Client, WorkflowHandle, WorkflowFailureError
     from temporalio.worker import Worker
     from temporalio.exceptions import ApplicationError
+    from temporalio.service import RPCError
 
     from batch_processor import BatchPage
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
@@ -111,6 +112,29 @@ async def test_two_pages(client: Client):
         assert result.max_parallelism_achieved >= 1
         assert result.is_finished
 
+@pytest.mark.asyncio
+async def test_start_paused_and_add_parallelism(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    async with batch_worker(client, task_queue_name):
+        # Start paused
+        input = BatchOrchestratorInput(
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=ProcessesNItems.__name__, 
+                args=MyArgs(num_items_to_process=19).to_json(), 
+                page_size=10, 
+                first_cursor_str=default_cursor()),
+            max_parallelism=0)
+        handle = await start_orchestrator(client, task_queue_name, input)
+        # Wait for a little while; should not complete
+        try:
+            result = await handle.result(rpc_timeout=timedelta(seconds=2))
+        except RPCError as e:
+            assert "Timeout expired" in str(e)
+        
+        # Begin processing
+        await handle.signal(BatchOrchestrator.set_max_parallelism, 5)
+        result = await handle.result()
+        assert result.num_completed_pages == 2
 
 @page_processor
 class ProcessesNItems(PageProcessor):
