@@ -17,8 +17,8 @@ try:
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
-    from samples.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
-    from samples.product_db import ProductDB
+    from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
+    from samples.lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.
@@ -32,9 +32,14 @@ Original error: {e}
 # This sample shows a typical parallel batch migration of an entire sqlite table on an example table of products
 # and their prices.  This file is the caller; see inflate_product_prices_page_processor.py for the implementation.
 # To run this sample:
-#  1. Start a temporal server locally with docker-compose up
-#  2. Start your workers with poetry run python samples/run_workers.py
-#  3. Run this script with poetry run python samples/perform_sql_batch_migration.py
+#  1. Start a temporal server locally, e.g. with 
+#     docker-compose up
+#   or 
+#     temporal server start-dev --db-filename batch_orchestra_samples.db
+#  2. Start your workers with 
+#     poetry run python samples/run_workers.py
+#  3. Run this script with 
+#     poetry run python samples/perform_sql_batch_migration.py
 #
 async def main(num_items):
     # Set up the connection to temporal-server.
@@ -116,6 +121,6 @@ Original error: {e}
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table.")
     parser.add_argument("--num_items", type=int, default=2000, help="The number of items to populate the table with and process.")
-    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 1000>"
+    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 2000>"
     args = parser.parse_args()
     asyncio.run(main(args.num_items))
