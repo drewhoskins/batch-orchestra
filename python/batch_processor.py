@@ -227,7 +227,6 @@ class BatchProcessorContext(BatchWorkerContext):
             '_signal_add_page', # use string instead of literal to avoid upward dependency between this file and batch_orchestrator.py
             args=[page, self._page_num + 1]
         )
-
         self._next_page_signaled = BatchProcessorContext.NextPageSignaled.THIS_RUN
         activity.heartbeat("signaled_next_page")
     

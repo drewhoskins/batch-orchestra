@@ -88,6 +88,13 @@ class BatchOrchestrator:
             num_failed_pages=len(self.page_queue.page_tracker.failed_page_nums),
             is_finished=self.page_queue.page_tracker.is_finished,
             _start_timestamp=self.start_time.timestamp())
+    
+    # Use this to pause the batch (by setting it to 0) or otherwise increase/decrease the number of 
+    # @page_processors that can execute at once.
+    @workflow.signal
+    async def set_max_parallelism(self, max_parallelism: int) -> None:
+        self.logger.info(f"Changing max_parallelism to {max_parallelism} from {self.page_queue.page_tracker.max_parallelism}.")
+        self.page_queue.page_tracker.update_max_parallelism(max_parallelism)
 
     # Receives signals that new pages are ready to process and enqueues them.
     # Don't call this directly; call context.enqueue_next_page() from your @page_processor.
@@ -184,6 +191,9 @@ class BatchOrchestrator:
                 self._stuck_page_nums: Set[int] = set()
                 self._failed_page_nums: Set[int] = set()
                 self._is_finished: bool = False
+
+            def update_max_parallelism(self, max_parallelism: int) -> None:
+                self._max_parallelism = max_parallelism
 
             #
             # Status fields
