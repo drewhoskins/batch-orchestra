@@ -18,8 +18,8 @@ try:
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
 
-    from samples.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
-    from samples.product_db import ProductDB
+    from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
+    from samples.lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/pause_and_resume_processing.py`.
@@ -105,8 +105,8 @@ Original error: {e}
                 break
 
         # resume it
-        print("Resuming processing by calling set_max_parallelism(5)")
-        await handle.signal(BatchOrchestrator.set_max_parallelism, 5)
+        print("Resuming processing by calling restore_max_parallelism")
+        await handle.signal(BatchOrchestrator.restore_max_parallelism)
 
         # await the finish.
         while True:

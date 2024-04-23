@@ -91,10 +91,18 @@ class BatchOrchestrator:
     
     # Use this to pause the batch (by setting it to 0) or otherwise increase/decrease the number of 
     # @page_processors that can execute at once.
+    # Also "pushes" the old parallelism onto a stack so that you can restore_max_parallelism it later.
     @workflow.signal
     async def set_max_parallelism(self, max_parallelism: int) -> None:
         self.logger.info(f"Changing max_parallelism to {max_parallelism} from {self.page_queue.page_tracker.max_parallelism}.")
         self.page_queue.page_tracker.update_max_parallelism(max_parallelism)
+
+    # "pops" to the previous max_parallelism value, if there was one.
+    @workflow.signal
+    async def restore_max_parallelism(self) -> None:
+        current_parallelism = self.page_queue.page_tracker.max_parallelism
+        new_parallelism = self.page_queue.page_tracker.restore_max_parallelism()
+        self.logger.info(f"Restoring max_parallelism to {new_parallelism} from {current_parallelism}.")
 
     # Receives signals that new pages are ready to process and enqueues them.
     # Don't call this directly; call context.enqueue_next_page() from your @page_processor.
@@ -191,9 +199,17 @@ class BatchOrchestrator:
                 self._stuck_page_nums: Set[int] = set()
                 self._failed_page_nums: Set[int] = set()
                 self._is_finished: bool = False
+                self._previous_max_parallelisms: List[int] = []
 
             def update_max_parallelism(self, max_parallelism: int) -> None:
+                self._previous_max_parallelisms.append(self._max_parallelism)
                 self._max_parallelism = max_parallelism
+            
+            # Returns the previous (and new) max parallelism.
+            def restore_max_parallelism(self) -> int:
+                if self._previous_max_parallelisms:
+                    self._max_parallelism = self._previous_max_parallelisms.pop()
+                return self._max_parallelism
 
             #
             # Status fields
