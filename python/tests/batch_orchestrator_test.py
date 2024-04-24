@@ -15,7 +15,7 @@ try:
     from temporalio.common import RetryPolicy
     from temporalio.client import Client, WorkflowHandle, WorkflowFailureError
     from temporalio.worker import Worker
-    from temporalio.exceptions import ApplicationError
+    from temporalio.exceptions import ApplicationError, TimeoutError
     from temporalio.service import RPCError
 
     from batch_processor import BatchPage
@@ -615,11 +615,14 @@ async def test_workflow_times_out(client: Client):
                 name=ProcessesNItems.__name__,
                 page_size=10,
                 first_cursor_str=default_cursor(),
-                args=MyArgs(num_items_to_process=19).to_json()))
+                args=MyArgs(num_items_to_process=10000).to_json()))
         handle = await start_orchestrator(client, task_queue_name, input, run_timeout=timedelta(seconds=1))
-        with pytest.raises(WorkflowFailureError) as e:
+        try:
             await handle.result()
-        assert "Workflow execution timed out" in str(e.value)
+        except WorkflowFailureError as e:
+            assert isinstance(e.__cause__, TimeoutError)
+        else:
+            assert False, "Expected WorkflowFailureError"
 
 class MyHandler(logging.Handler):
     def __init__(self):
