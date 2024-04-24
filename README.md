@@ -66,7 +66,7 @@ It helps solve many problems that tend to come up for batch jobs.
 * Eliminates unevenly-sized pages.
 * Only scans through your database one time--no need for an initial pass to find the page boundaries.
 * Controllable parallelism to limit impact on downstream systems.
-* [coming soon] pauses and gradual throughput rampups.
+* Pauses and gradual throughput rampups.
 * Feature-rich retries.
 * Built-in progress tracking.
 * Debuggable, via Temporal's UI and log statements.
