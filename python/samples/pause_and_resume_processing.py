@@ -1,6 +1,8 @@
 from asyncio import sleep
 import sys
 
+from batch_orchestrator_client import BatchOrchestratorClient
+
 try:
     import asyncio
     from dataclasses import dataclass
@@ -16,7 +18,7 @@ try:
     import temporalio.service
 
     from batch_orchestrator_io import BatchOrchestratorProgress
-    from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
+    from batch_orchestrator import BatchOrchestratorInput
 
     from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
     from samples.lib.product_db import ProductDB
@@ -59,8 +61,7 @@ Original error: {e}
         # Execute the migration
         
         # start it
-        handle: WorkflowHandle = await temporal_client.start_workflow(
-            BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
+        handle: WorkflowHandle = await BatchOrchestratorClient(temporal_client).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
@@ -79,7 +80,7 @@ Original error: {e}
             await sleep(1)
             time_slept += 1
             try:
-                progress = await handle.query(BatchOrchestrator.current_progress)
+                progress = await handle.get_progress()
             except temporalio.service.RPCError as e:
                 print(f"Waiting for workflow {handle.id} to start...")
             else:
@@ -89,14 +90,14 @@ Original error: {e}
                     print(f"Progress before pausing (after {time_slept} seconds): {progress}")
                     break
 
-        print("Pausing processing by calling set_max_parallelism(0)")
-        await handle.signal(BatchOrchestrator.set_max_parallelism, 0)
+        print("Pausing processing with BatchOrchestratorHandle.pause()")
+        await handle.pause()
 
         # Wait until progress stops progressing
         while True:
             await sleep(1)
             time_slept += 1
-            progress = await handle.query(BatchOrchestrator.current_progress)
+            progress = await handle.get_progress()
             if progress.is_finished:
                 raise RuntimeError(f"Workflow {handle.id} has already finished -- didn't have time to resume!  Consider increasing --num_items.")
 
@@ -105,14 +106,14 @@ Original error: {e}
                 break
 
         # resume it
-        print("Resuming processing by calling restore_max_parallelism")
-        await handle.signal(BatchOrchestrator.restore_max_parallelism)
+        print("Resuming processing by calling BatchOrchestatorHandle.resume()")
+        await handle.resume()
 
         # await the finish.
         while True:
             await sleep(2)
             time_slept += 2
-            progress = await handle.query(BatchOrchestrator.current_progress)
+            progress = await handle.get_progress()
             print(f"Current progress after {time_slept} seconds: {progress}")
             if progress.is_finished:
                 break
@@ -122,10 +123,10 @@ Original error: {e}
 
     finally:
         os.remove(db_file.name)
-        info = await handle.describe()
+        info = await handle.workflow_handle.describe()
         if info.status == temporalio.client.WorkflowExecutionStatus.RUNNING:
             print("\nCanceling workflow") 
-            await handle.cancel()
+            await handle.workflow_handle.cancel()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to pause and then resume a batch migration.")

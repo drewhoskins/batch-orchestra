@@ -1,5 +1,8 @@
 from asyncio import sleep
 import sys
+from typing import Any
+
+from batch_orchestrator_client import BatchOrchestratorClient
 
 try:
     import asyncio
@@ -67,8 +70,7 @@ Original error: {e}
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
         # Execute the migration
-        handle: WorkflowHandle = await temporal_client.start_workflow(
-            BatchOrchestrator.run,  # type: ignore (unclear why this is necessary, but mypy complains without it.)
+        handle: WorkflowHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(temporal_client).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
@@ -87,7 +89,7 @@ Original error: {e}
             await sleep(5)
             time_slept += 5
             try:
-                progress = await handle.query(BatchOrchestrator.current_progress)
+                progress = await handle.get_progress()
             except temporalio.service.RPCError as e:
                 print(f"Waiting for workflow {handle.id} to start...")
             else:
@@ -113,10 +115,10 @@ Original error: {e}
 
     finally:
         os.remove(db_file.name)
-        info = await handle.describe()
+        info = await handle.workflow_handle.describe()
         if info.status == temporalio.client.WorkflowExecutionStatus.RUNNING:
             print("\nCanceling workflow") 
-            await handle.cancel()
+            await handle.workflow_handle.cancel()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table.")

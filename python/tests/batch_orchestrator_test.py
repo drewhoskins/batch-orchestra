@@ -20,6 +20,7 @@ try:
 
     from batch_processor import BatchPage
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
+    from batch_orchestrator_client import BatchOrchestratorClient
     from batch_processor import BatchProcessorContext, page_processor, PageProcessor
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
@@ -28,8 +29,7 @@ except ModuleNotFoundError as e:
     sys.exit(1)
 
 async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput, *, run_timeout: Optional[timedelta] = None)-> WorkflowHandle:
-    return await client.start_workflow(
-        BatchOrchestrator.run, # type: ignore (unclear why this is necessary, but mypy complains without it.)
+    return await BatchOrchestratorClient(client).start(
         input, id=str(uuid.uuid4()), task_queue=task_queue_name, run_timeout=run_timeout)
 
 @dataclass
@@ -132,7 +132,7 @@ async def test_start_paused_and_add_parallelism(client: Client):
             assert "Timeout expired" in str(e)
         
         # Begin processing
-        await handle.signal(BatchOrchestrator.set_max_parallelism, 5)
+        await handle.set_max_parallelism(5)
         result = await handle.result()
         assert result.num_completed_pages == 2
 
@@ -682,7 +682,7 @@ async def test_current_progress_query(client: Client):
                 first_cursor_str=default_cursor(),
                 args=MyArgs(num_items_to_process=19).to_json()))
         handle = await start_orchestrator(client, task_queue_name, input)
-        interim_result = await handle.query(BatchOrchestrator.current_progress)
+        interim_result = await handle.get_progress()
         assert interim_result.num_completed_pages in [0, 1, 2]
         result = await handle.result()
         assert result.num_completed_pages == 2
