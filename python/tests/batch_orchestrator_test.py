@@ -170,10 +170,7 @@ async def test_max_parallelism(client: Client):
                 page_size=10, 
                 first_cursor_str=default_cursor()),
             max_parallelism=max_parallelism)
-        handle = await client.start_workflow( 
-            BatchOrchestrator.run, # type: ignore
-            input, id=str(uuid.uuid4()), task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 6 # 5 pages * 10 + 1 page * 9
         # While not a rock-hard guarantee, max_parallelism should be achieved in practice because I'm sleeping within the activity
@@ -190,10 +187,7 @@ async def test_page_size(client: Client):
                 page_size=5, 
                 first_cursor_str=default_cursor()),
             max_parallelism=3)
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, # type: ignore
-            input, id=str(uuid.uuid4()), task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 10 # 9 pages * 5 items + 1 page with 4
 
@@ -220,10 +214,7 @@ async def test_timeout(client: Client):
                 timeout_seconds=123,
                 first_cursor_str=default_cursor()),
             max_parallelism=3)
-        handle = await client.start_workflow( 
-            BatchOrchestrator.run, # type: ignore
-            input, id=str(uuid.uuid4()), task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 1
 
@@ -258,11 +249,7 @@ async def test_extended_retries(client: Client):
                 first_cursor_str=default_cursor()
             ),
             max_parallelism=3)
-
-        handle = await client.start_workflow(
-            BatchOrchestrator.run, # type: ignore
-            input, id=str(uuid.uuid4()), task_queue=task_queue_name
-        )
+        handle = await start_orchestrator(client, task_queue_name, input)
         result = await handle.result()
         assert result.num_completed_pages == 1
 

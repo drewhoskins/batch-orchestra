@@ -1,6 +1,8 @@
 from __future__ import annotations
 import sys
 
+from batch_orchestrator_client import BatchOrchestratorClient
+
 try:
     from dataclasses import asdict, dataclass
     from asyncio import sleep
@@ -102,8 +104,7 @@ async def my_tracker(context: BatchTrackerContext):
     my_tracker_progresses.append(context.progress)
 
 async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput)-> WorkflowHandle:
-    return await client.start_workflow(
-        BatchOrchestrator.run, # type: ignore (unclear why this is necessary, but mypy complains without it.)
+    return await BatchOrchestratorClient(client).start(
         input, id=str(uuid.uuid4()), task_queue=task_queue_name)
 
 

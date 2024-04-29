@@ -38,10 +38,9 @@ class BatchOrchestrator:
 
     # Run this to process a batch of work with controlled parallelism and in a fault-tolerant way.
     # See the docs for BatchOrchestratorInput for customizations.
-    # Then invoke it and await for it as you would any Temporal workflow, for example:
-    # client = await Client.connect("localhost:7233")
-    # handle = await client.start_workflow(
-    #   BatchOrchestrator.run, 
+    # Then invoke it like so:
+    # temporal_client = await Client.connect("localhost:7233")
+    # handle: WorkflowHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(temporal_client).start(    
     #   BatchOrchestratorInput(
     #     batch_id="my_batch_id", 
     #     page_processor_name=my_page_processor.__name__, 
