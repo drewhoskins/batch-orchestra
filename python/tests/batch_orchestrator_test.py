@@ -13,14 +13,14 @@ try:
     from typing import Optional
 
     from temporalio.common import RetryPolicy
-    from temporalio.client import Client, WorkflowHandle, WorkflowFailureError
+    from temporalio.client import Client, WorkflowHandle, WorkflowFailureError, WorkflowContinuedAsNewError
     from temporalio.worker import Worker
     from temporalio.exceptions import ApplicationError, TimeoutError
     from temporalio.service import RPCError
 
     from batch_processor import BatchPage
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
-    from batch_orchestrator_client import BatchOrchestratorClient
+    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
     from batch_processor import BatchProcessorContext, page_processor, PageProcessor
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
@@ -28,7 +28,7 @@ except ModuleNotFoundError as e:
     print(f"Original error: {e}")
     sys.exit(1)
 
-async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput, *, run_timeout: Optional[timedelta] = None)-> WorkflowHandle:
+async def start_orchestrator(client: Client, task_queue_name: str, input: BatchOrchestratorInput, *, run_timeout: Optional[timedelta] = None)-> BatchOrchestratorHandle:
     return await BatchOrchestratorClient(client).start(
         input, id=str(uuid.uuid4()), task_queue=task_queue_name, run_timeout=run_timeout)
 
@@ -111,6 +111,68 @@ async def test_two_pages(client: Client):
         assert result.num_completed_pages == 2 # 10 first page, 9 second
         assert result.max_parallelism_achieved >= 1
         assert result.is_finished
+
+
+@pytest.mark.asyncio
+async def test_aggressive_continue_as_new(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    # Unlikely users will put pages_per_run < max_parallelism, but we should support it
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=ProcessesNItems.__name__,
+                args=MyArgs(num_items_to_process=45).to_json(), 
+                page_size=10, 
+                first_cursor_str=default_cursor()),
+            max_parallelism=10,
+            pages_per_run=2)
+        handle = await start_orchestrator(client, task_queue_name, input)
+        run_id_2 = None
+        try:
+            result = await handle.result(follow_runs=False)
+        except WorkflowContinuedAsNewError as e:
+            run_id_2 = e.new_execution_run_id
+        assert run_id_2 is not None
+        handle = BatchOrchestratorClient(client).get_handle(handle.workflow_handle.id, run_id=run_id_2)
+        run_id_3 = None
+        try:
+            result = await handle.result(follow_runs=False)
+        except WorkflowContinuedAsNewError as e:
+            run_id_3 = e.new_execution_run_id
+        assert run_id_3 is not None
+        handle = BatchOrchestratorClient(client).get_handle(handle.workflow_handle.id, run_id=run_id_3)
+        result = await handle.result()
+
+        assert result.num_completed_pages == 5 # 4 pages * 10 + 1 page * 5
+        assert result.max_parallelism_achieved >= 1
+        assert result.is_finished
+
+@pytest.mark.asyncio
+async def test_continue_as_new(client: Client):
+    task_queue_name = str(uuid.uuid4())
+    # Unlikely pages_per_run < max_parallelism but we should support it
+    async with batch_worker(client, task_queue_name):
+        input = BatchOrchestratorInput(
+            page_processor=BatchOrchestratorInput.PageProcessorContext(
+                name=ProcessesNItems.__name__,
+                args=MyArgs(num_items_to_process=45).to_json(), 
+                page_size=10, 
+                first_cursor_str=default_cursor()),
+            max_parallelism=2,
+            pages_per_run=3)
+        handle = await start_orchestrator(client, task_queue_name, input)
+        try:
+            await handle.result(follow_runs=False)
+        except WorkflowContinuedAsNewError as e:
+            run_id = e.new_execution_run_id
+            assert run_id is not None
+            handle = BatchOrchestratorClient(client).get_handle(handle.workflow_handle.id, run_id=run_id)
+            result = await handle.result()
+        assert result.num_completed_pages == 5 # 4 pages * 10 + 1 page * 5
+        assert result.max_parallelism_achieved >= 1
+        assert result.is_finished
+        assert handle.workflow_handle.result_run_id != handle.workflow_handle.first_execution_run_id
+
 
 @pytest.mark.asyncio
 async def test_start_paused_and_add_parallelism(client: Client):

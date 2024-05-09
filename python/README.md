@@ -54,4 +54,3 @@ Some things to keep an eye on/ that I want to tackle before the initial release
 * Error handling
   * Call a handler when there are initial failures, to be used for notifications and such.
   * Allow users to designate individual records as failures and proceed with the rest of their page.
-* Huge batches that span multiple workflow histories.  Likely will use child workflows or continue-as-new.

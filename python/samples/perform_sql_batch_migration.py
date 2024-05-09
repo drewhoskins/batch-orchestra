@@ -44,7 +44,7 @@ Original error: {e}
 #  3. Run this script with 
 #     poetry run python samples/perform_sql_batch_migration.py
 #
-async def main(num_items):
+async def main(num_items, pages_per_run):
     # Set up the connection to temporal-server.
     host = "localhost:7233"
     try:
@@ -64,7 +64,6 @@ Original error: {e}
     db_connection = ProductDB.get_db_connection(db_file.name)
 
     ProductDB.populate_table(db_connection, num_records=num_items)
-
     try:
         print(f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail.")
         args = ConfigArgs(db_file=db_file.name)
@@ -76,8 +75,9 @@ Original error: {e}
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
                     name=InflateProductPrices.__name__, 
                     page_size=page_size,
-                    args=args.to_json())
-                ),
+                    args=args.to_json()),
+                pages_per_run=pages_per_run
+            ),
             id=f"inflate_product_prices-{str(uuid.uuid4())}", 
             task_queue="my-task-queue"
             )
@@ -123,6 +123,11 @@ Original error: {e}
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table.")
     parser.add_argument("--num_items", type=int, default=2000, help="The number of items to populate the table with and process.")
-    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 2000>"
+    parser.add_argument(
+        "--pages_per_run", 
+        type=int, 
+        help="The number of items to process in run of the BatchOrchestrator workflow.  By default, it's as many pages until Temporal "\
+         "suggests to start a new run.")
+    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 2000> --pages_per_run <N, default unspecified>"
     args = parser.parse_args()
-    asyncio.run(main(args.num_items))
+    asyncio.run(main(args.num_items, args.pages_per_run))

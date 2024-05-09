@@ -65,6 +65,7 @@ It helps solve many problems that tend to come up for batch jobs.
 * Can run tens or hundreds of processes in parallel.
 * Eliminates unevenly-sized pages.
 * Only scans through your database one time--no need for an initial pass to find the page boundaries.
+* Scales "infinitely"
 * Controllable parallelism to limit impact on downstream systems.
 * Pauses and gradual throughput rampups.
 * Feature-rich retries.
@@ -88,9 +89,6 @@ It's TBD to what extent this is better than other frameworks outside the Tempora
 
 ## What are the caveats?
 Batch Orchestra does not guarantee that items in your data set are processed in a certain order.
-
-It currently scales to roughly 500 pages, and with the default 5 minutes of processing time per page, that gives around 40 hours of processing time.  
-Higher scale support is on the roadmap--please ask for it if you need it.  (see [Very Long Running Workflows](https://temporal.io/blog/very-long-running-workflows))
 
 Otherwise, think about the operation you want to apply to each item in your data set.
 If it's "complex", meaning it's stateful and difficult to make idempotent, you may instead want to run a workflow per operation or, at high throughputs, use other frameworks.

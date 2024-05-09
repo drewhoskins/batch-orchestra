@@ -29,6 +29,9 @@ class BatchOrchestratorInput:
     # Prepended to log messages to help you identify which batch is being processed.  Useful if the batch may requires
     # multiple workflows (with separate workflow IDs) to process.
     batch_id: str = ''
+    # The maximum number of pages to process in a single workflow run before continuing as new.
+    # None (recommended) indicates to let Temporal decide.
+    pages_per_run: Optional[int] = None
 
     @dataclass(kw_only=True)
     class PageProcessorContext:
