@@ -6,7 +6,6 @@ try:
     from dataclasses import asdict, dataclass
     import json
     import logging
-    from unittest.mock import patch
     import pytest
     import uuid
     from datetime import datetime, timedelta
@@ -710,7 +709,7 @@ async def test_logging(client: Client):
                 first_cursor_str=default_cursor(),
                 args=MyArgs(num_items_to_process=19).to_json()))
         handle = await start_orchestrator(client, task_queue_name, input)
-        result = await handle.result()
+        await handle.result()
         # Make sure workflow logs the batch ID.
         first_log = log_capture.records[0].__dict__
         assert first_log['msg'].startswith("Starting batch.")

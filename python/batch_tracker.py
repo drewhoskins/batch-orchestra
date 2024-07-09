@@ -1,7 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from temporalio import activity
 
@@ -31,7 +30,7 @@ async def track_batch_progress(
     if not user_provided_batch_tracker:
         raise Exception(
             f"You passed batch_tracker_name '{batch_tracker_name}' into the BatchOrchestrator, but it was not registered on " +
-            f"your worker.  Please annotate it with @batch_tracker and make sure its module is imported. " + 
+            "your worker.  Please annotate it with @batch_tracker and make sure its module is imported. " + 
             f"Available functions: {list_batch_trackers()}")
     context = await BatchTrackerContext(
         batch_id=batch_id, 

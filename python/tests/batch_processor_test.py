@@ -3,7 +3,6 @@ import sys
 from typing import Type
 
 try:
-    from dataclasses import dataclass
     from typing import Any, Sequence, Optional
     from unittest.mock import patch, AsyncMock
 
@@ -11,7 +10,6 @@ try:
 
     from temporalio.client import WorkflowHandle, Client
     from temporalio.testing import ActivityEnvironment
-    from temporalio.activity import info
     import temporalio.common
     import temporalio.exceptions
 
@@ -62,13 +60,12 @@ async def test_page_processor():
 
 @pytest.mark.asyncio
 async def test_invalid_page_processor_name():
-    env = ActivityEnvironment()
     try:
         await run_page_processor("not a callable")
     except ValueError as e:
-        assert str(e).startswith(f"You passed page_processor_name 'not a callable' into the BatchOrchestrator, but it was not registered on " + \
-            f"your worker. Please annotate a class inheriting from batch_processor.PageProcessor with @page_processor and make sure its module is imported. " + \
-            f"Available classes: [")
+        assert str(e).startswith("You passed page_processor_name 'not a callable' into the BatchOrchestrator, but it was not registered on " + \
+            "your worker. Please annotate a class inheriting from batch_processor.PageProcessor with @page_processor and make sure its module is imported. " + \
+            "Available classes: [")
         assert "'ReturnsCursor'" in str(e)
     else:
         assert False, "Should have thrown an error."
@@ -99,7 +96,7 @@ async def on_signal(
 
 @pytest.mark.asyncio
 async def test_signal():
-    with patch.object(WorkflowHandle, 'signal', new=on_signal) as signal_mock:
+    with patch.object(WorkflowHandle, 'signal', new=on_signal):
         await run_page_processor(StartsNewPage)
 
 expected_heartbeat_details = "signaled_next_page"
@@ -109,7 +106,7 @@ def on_heartbeat(details):
 
 @pytest.mark.asyncio
 async def test_heartbeat():
-    with patch.object(WorkflowHandle, 'signal', new=on_signal) as signal_mock:
+    with patch.object(WorkflowHandle, 'signal', new=on_signal):
         env = ActivityEnvironment()
         env.on_heartbeat = on_heartbeat
         await run_page_processor(StartsNewPage, env=env)
@@ -158,14 +155,12 @@ class ChecksBatchID(PageProcessor):
 
 @pytest.mark.asyncio
 async def test_batch_id():
-    with patch.object(WorkflowHandle, 'signal') as signal_mock:
-        env = ActivityEnvironment()
+    with patch.object(WorkflowHandle, 'signal'):
         await run_page_processor(ChecksBatchID, batch_id="my_batch_id")
 
 @pytest.mark.asyncio
 async def test_cannot_enqueue_two_pages():
-    with patch.object(WorkflowHandle, 'signal', new_callable=AsyncMock) as signal_mock:
-        env = ActivityEnvironment()
+    with patch.object(WorkflowHandle, 'signal', new_callable=AsyncMock):
         try:
             await run_page_processor(AttemptsToSignalTwice)
         except AssertionError as e:
@@ -211,7 +206,7 @@ async def test_invalid_config_too_many_retries():
     try:
         await run_page_processor(TooManyRetries)
     except ValueError as e:
-        assert str(e) == f"@page_processor TooManyRetries: You cannot set initial_retry_policy.maximum_attempts to anything other than 1 (got 2) for retry_mode EXECUTE_AT_MOST_ONCE."
+        assert str(e) == "@page_processor TooManyRetries: You cannot set initial_retry_policy.maximum_attempts to anything other than 1 (got 2) for retry_mode EXECUTE_AT_MOST_ONCE."
 
 @page_processor
 class ExtendedRetriesWithNoRetries(PageProcessor):
@@ -231,7 +226,7 @@ async def test_invalid_config_extended_retries_and_at_most_once():
     try:
         await run_page_processor(ExtendedRetriesWithNoRetries)
     except ValueError as e:
-        assert str(e) == f"@page_processor ExtendedRetriesWithNoRetries: You cannot set use_extended_retries for retry_mode EXECUTE_AT_MOST_ONCE."
+        assert str(e) == "@page_processor ExtendedRetriesWithNoRetries: You cannot set use_extended_retries for retry_mode EXECUTE_AT_MOST_ONCE."
 
 
 if __name__ == "__main__":

@@ -2,8 +2,7 @@ from __future__ import annotations
 import sys
 
 try:
-    from dataclasses import dataclass, asdict
-    from typing import Any, Sequence
+    from dataclasses import asdict
     from unittest.mock import patch
     from datetime import datetime, timedelta
 
@@ -11,9 +10,6 @@ try:
 
     from temporalio.client import WorkflowHandle, Client
     from temporalio.testing import ActivityEnvironment
-    from temporalio.activity import info
-    import temporalio.common
-    import temporalio.exceptions
 
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_tracker import batch_tracker, track_batch_progress, BatchTrackerContext, BatchTrackerKeepPolling
@@ -55,14 +51,14 @@ async def test_stuck_page_tracker():
             is_finished=False,
             _start_timestamp=datetime.now().timestamp())
         query_mock.return_value = asdict(current_progress)
-        got_polling_exception = False
         await init_client()
         try:
             await env.run(track_batch_progress, polls_for_stuck_pages.__name__, 'my_batch_id', None)
-        except BatchTrackerKeepPolling as e:
+        except BatchTrackerKeepPolling:
             notify_mock.assert_called_once_with('my_batch_id', 1)
         else:
             assert False, "Expected BatchTrackerKeepPolling to be raised"
+
 
 def notify_that_batch_is_past_slo(batch_id: str):
     pass
@@ -92,7 +88,7 @@ async def test_elapsed_time_tracker():
         await init_client()
         try:
             await env.run(track_batch_progress, tracks_batch_taking_too_long.__name__, 'my_batch_id', None)
-        except BatchTrackerKeepPolling as e:
+        except BatchTrackerKeepPolling:
             notify_mock.assert_not_called()
         else:
             assert False, "Expected BatchTrackerKeepPolling to be raised"
@@ -111,22 +107,13 @@ async def test_elapsed_time_tracker():
         await init_client()
         try:
             await env.run(track_batch_progress, tracks_batch_taking_too_long.__name__, 'my_batch_id', None)
-        except BatchTrackerKeepPolling as e:
+        except BatchTrackerKeepPolling:
             notify_mock.assert_called_once_with('my_batch_id')
         else:
             assert False, "Expected BatchTrackerKeepPolling to be raised"
 
 @pytest.mark.asyncio
-async def test_uninitialized_client():
-    current_status = BatchOrchestratorProgress(
-        num_completed_pages=5, 
-        max_parallelism_achieved=3, 
-        num_processing_pages=1,
-        num_failed_pages=0,
-        num_stuck_pages=0,
-        is_finished=False,
-        _start_timestamp=datetime.now().timestamp())
-    
+async def test_uninitialized_client():    
     env = ActivityEnvironment()
     BatchWorkerClient.get_instance()._clear_temporal_client()
     try:

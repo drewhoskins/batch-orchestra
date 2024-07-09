@@ -103,7 +103,7 @@ def get_page_processor(page_processor_class_name: str) -> PageProcessor:
     if not user_provided_page_processor:
         raise ValueError(
             f"You passed page_processor_name '{page_processor_class_name}' into the BatchOrchestrator, but it was not registered on " +
-            f"your worker. Please annotate a class inheriting from batch_processor.PageProcessor with @page_processor and make sure its module is imported. " + 
+            "your worker. Please annotate a class inheriting from batch_processor.PageProcessor with @page_processor and make sure its module is imported. " + 
             f"Available classes: {list_page_processors()}")
     return user_provided_page_processor()
 

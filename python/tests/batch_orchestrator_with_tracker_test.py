@@ -64,7 +64,6 @@ fails_first_n_tries_calls = 0
 @page_processor
 class FailsFirstNTries(PageProcessor):
     async def run(self, context: BatchProcessorContext):
-        page = context.page
         args = MyArgs.from_json(context.args_str)
         await sleep(1)
         global fails_first_n_tries_calls

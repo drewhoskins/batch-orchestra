@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc import ABC
-from typing import Awaitable, Callable, Optional, Sequence
+from typing import Optional
 
 import temporalio.client
 from temporalio.client import Client, WorkflowHandle
@@ -56,7 +56,7 @@ class BatchWorkerContext(ABC):
         workflow_client = BatchWorkerClient.get_instance().get_temporal_client()
         if workflow_client is None:
             raise ValueError(
-                f"Missing a temporal client for use by your @page_processor or @batch_tracker. " + \
+                "Missing a temporal client for use by your @page_processor or @batch_tracker. " + \
                 "Make sure to call BatchWorkerClient.register(client).")
         self._workflow_client: Client = workflow_client
 

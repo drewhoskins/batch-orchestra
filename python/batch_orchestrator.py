@@ -1,20 +1,18 @@
 from __future__ import annotations
 from asyncio import Future
-from dataclasses import asdict, dataclass, field
 from datetime import timedelta
-from enum import Enum
 import logging
-from typing import Any, Dict, List, Optional, Set, Type
+from typing import Dict, Optional, Set, Type
 
 import inflect
 
 from internal.state import ContinueAsNewState, EnqueuedPage, PageTrackerData
 from temporalio import workflow
-import temporalio
+
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError, CancelledError
 
-from batch_processor import PageProcessor, get_page_processor, list_page_processors
+from batch_processor import PageProcessor, get_page_processor
 from batch_processor import BatchPage, process_page
 from batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
 from batch_tracker import track_batch_progress
@@ -251,7 +249,7 @@ class BatchOrchestrator:
             # Triggers to track changes
             #
             def on_page_enqueued(self, page_num: int) -> None:
-                if not page_num in self.data.stuck_page_nums:
+                if page_num not in self.data.stuck_page_nums:
                     self.data.num_pages_ever_enqueued += 1
                     self._num_pages_enqueued_in_this_run += 1
                 self.data.pending_page_nums.append(page_num)
