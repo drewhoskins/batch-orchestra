@@ -1,5 +1,4 @@
 
-from dataclasses import dataclass
 import sqlite3
 from typing import Optional
 import uuid

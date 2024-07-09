@@ -3,7 +3,6 @@ from asyncio import sleep
 from dataclasses import asdict, dataclass
 import json
 import sys
-import temporalio.client
 
 from typing import Optional
 
