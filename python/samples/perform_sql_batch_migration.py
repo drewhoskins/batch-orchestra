@@ -1,6 +1,6 @@
 from asyncio import sleep
 import sys
-from typing import Any
+from typing import Any, Optional
 
 from batch_orchestrator_client import BatchOrchestratorClient
 
@@ -41,7 +41,7 @@ Original error: {e}
 #  3. Run this script with 
 #     poetry run python samples/perform_sql_batch_migration.py
 #
-async def main(num_items, pages_per_run):
+async def main(num_items, pages_per_run, name: Optional[str]):
     # Set up the connection to temporal-server.
     host = "localhost:7233"
     try:
@@ -75,7 +75,7 @@ Original error: {e}
                     args=args.to_json()),
                 pages_per_run=pages_per_run
             ),
-            id=f"inflate_product_prices-{str(uuid.uuid4())}", 
+            id=f"inflate_product_prices-{name or str(uuid.uuid4())}", 
             task_queue="my-task-queue"
             )
         
@@ -124,6 +124,13 @@ if __name__ == "__main__":
         type=int, 
         help="The number of items to process in run of the BatchOrchestrator workflow.  By default, it's as many pages until Temporal "\
          "suggests to start a new run.")
-    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 2000> --pages_per_run <N, default unspecified>"
+    parser.add_argument(
+        "--job_name",
+        type=str,
+        help="Workflow will be called inflate_product_prices-{job_name}", 
+        default=None
+    )
+    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 2000> "\
+        "--pages_per_run <N, default unspecified> --job_name <name, default UUID>"
     args = parser.parse_args()
-    asyncio.run(main(args.num_items, args.pages_per_run))
+    asyncio.run(main(args.num_items, args.pages_per_run, args.job_name))

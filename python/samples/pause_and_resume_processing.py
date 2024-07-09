@@ -1,19 +1,18 @@
-from asyncio import sleep
 import sys
 
-from batch_orchestrator_client import BatchOrchestratorClient
-
 try:
+    from asyncio import sleep
     import asyncio
     from tempfile import NamedTemporaryFile
     import uuid
     import os
     import argparse
 
-    from temporalio.client import Client, WorkflowHandle
+    from temporalio.client import Client
     import temporalio.service
 
     from batch_orchestrator import BatchOrchestratorInput
+    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
 
     from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
     from samples.lib.product_db import ProductDB
@@ -56,7 +55,7 @@ Original error: {e}
         # Execute the migration
         
         # start it
-        handle: WorkflowHandle = await BatchOrchestratorClient(temporal_client).start(
+        handle: BatchOrchestratorHandle = await BatchOrchestratorClient(temporal_client).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(

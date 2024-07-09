@@ -62,7 +62,7 @@ class InflateProductPrices(PageProcessor):
             # Note that this write is idempotent, so if we have to retry something that already succeeded,
             # we won't multiply by 1.04^2
             await ProductDB.inflate_price(db_connection, product, 1.04)
-            await sleep(0.001)  # Simulate a network hop
+            await sleep(0.010)  # Simulate a network hop
             num_processed += 1
             # Allows the worker to context-switch, showing off parallelism when testing on systems with fewer cores.
 
