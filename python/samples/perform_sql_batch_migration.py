@@ -6,19 +6,16 @@ from batch_orchestrator_client import BatchOrchestratorClient
 
 try:
     import asyncio
-    from dataclasses import dataclass
     from tempfile import NamedTemporaryFile
-    from typing import Generic
     import uuid
     import os
     import argparse
 
     from temporalio.client import Client, WorkflowHandle
-    from temporalio.types import MethodAsyncSingleParam
     import temporalio.service
 
     from batch_orchestrator_io import BatchOrchestratorProgress
-    from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput
+    from batch_orchestrator import BatchOrchestratorInput
 
     from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
     from samples.lib.product_db import ProductDB
@@ -90,7 +87,7 @@ Original error: {e}
             time_slept += 5
             try:
                 progress = await handle.get_progress()
-            except temporalio.service.RPCError as e:
+            except temporalio.service.RPCError:
                 print(f"Waiting for workflow {handle.id} to start...")
             else:
                 if progress.is_finished:
@@ -103,7 +100,6 @@ Original error: {e}
 
         # Verify that we adjusted the prices on all rows.
         db_connection = ProductDB.get_db_connection(db_file.name)
-        cursor = ""
         num_bad_apples = 0
 
         for (i, product) in ProductDB.for_each_product(db_connection):
