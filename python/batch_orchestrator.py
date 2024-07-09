@@ -197,7 +197,6 @@ class BatchOrchestrator:
             def should_continue_as_new(self) -> bool:
                 if workflow.info().is_continue_as_new_suggested():
                     return True
-                workflow.logger.info(f"pages_per_run: {self._pages_per_run}, num_pages_enqueued_in_this_run: {self._num_pages_enqueued_in_this_run} {self.data}")
                 if not self._pages_per_run:
                     return False
                 return self._num_pages_enqueued_in_this_run > self._pages_per_run
