@@ -2,7 +2,7 @@ from asyncio import sleep
 import sys
 from typing import Any, Optional
 
-from batch_orchestrator_client import BatchOrchestratorClient
+from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
 
 try:
     import asyncio
@@ -66,7 +66,7 @@ Original error: {e}
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
         # Execute the migration
-        handle: WorkflowHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(temporal_client).start(
+        handle: BatchOrchestratorHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(temporal_client).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
@@ -88,7 +88,7 @@ Original error: {e}
             try:
                 progress = await handle.get_progress()
             except temporalio.service.RPCError:
-                print(f"Waiting for workflow {handle.id} to start...")
+                print(f"Waiting for workflow {handle.workflow_handle.id} to start...")
             else:
                 if progress.is_finished:
                     break
