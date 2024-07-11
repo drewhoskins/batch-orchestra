@@ -116,6 +116,9 @@ With Batch Orchestra, you code like you are doing serial pagination, but you inv
 This gives you the simplicity of serial pagination along with parallelism, fair page sizes, and requires only one scan through the data set.
 (P.S. Please let me know if you've seen other frameworks adopt this approach or know of an existing term for it.)
 
-It looks like this:
+Let's see what a pipelined batch job looks like in Temporal's UI.  This batch job had 3-way parallelism:
+![Alt text](pipelined_pagination.png "Pipelined Pagination in Temporal UI")
+
+If you'd prefer a more code-centric view, the algorithm looks like this:
 ![Alt text](architecture_diagram.png "Architecture Diagram") 
 
