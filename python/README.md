@@ -43,10 +43,7 @@ You need to do three things
 
 * Register the workflow `BatchOrchestrator`
 * Register the activity, `process_page`, a generic framework function that will call functions you've annotated with `@page_processor`.
-* Create a BatchWorkerClient, using your Worker's temporal client, like so:
-
-
-    temporal_client = BatchWorkerClient.register(temporal_client)
+* Create a BatchWorkerClient, using your Worker's temporal client, like so: `temporal_client = BatchWorkerClient.register(temporal_client)`
 
 
 See [here](./samples/run_workers.py) for an example.
