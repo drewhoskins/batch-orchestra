@@ -42,8 +42,9 @@ Your Worker that processes batches will be a standard Temporal Worker with one t
 You need to do three things
 
 * Register the workflow `BatchOrchestrator`
-* Register the activity, `process_page`, a generic framework function that will call functions you've annotated with @page_processor.
+* Register the activity, `process_page`, a generic framework function that will call functions you've annotated with `@page_processor`.
 * Create a BatchWorkerClient, using your Worker's temporal client, like so:
+
 
     temporal_client = BatchWorkerClient.register(temporal_client)
 
