@@ -79,6 +79,8 @@ Original error: {e}
             task_queue="my-task-queue"
             )
         
+        print(f"See your batch job at http://localhost:8233/namespaces/default/workflows/{handle.workflow_handle.id}/{handle.workflow_handle.first_execution_run_id}/history.")
+
         # Suppose we want to track intermediate progress.  We could add a batch_tracker to run a tracker on the worker, 
         # but for this sample, we'll query the BatchOrchestrator so we can show something in this console window.
         time_slept = 0
