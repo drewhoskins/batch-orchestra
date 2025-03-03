@@ -30,6 +30,36 @@ Then use pytest to run the tests:
 
 You may also run the samples, which are currently the best place to get an idea of how to implement.  See the [samples README](./samples/README.md)
 
+# Page processors
+
+The main thing you implement is a page processor annotated with `@page_processor`.
+See `InflateProductPrices` in the sample for an example of a page processor.
+
+# Setting up your Temporal Worker
+
+Your Worker that processes batches will be a standard Temporal Worker with one tweak.  
+
+You need to do three things
+
+* Register the workflow `BatchOrchestrator`
+* Register the activity, `process_page`, a generic framework function that will call functions you've annotated with @page_processor.
+* Create a BatchWorkerClient, using your Worker's temporal client, like so:
+
+    temporal_client = BatchWorkerClient.register(temporal_client)
+
+
+See [here](./samples/run_workers.py) for an example.
+
+# Custom trackers
+
+If you want, you can track your batch's progress without doing any tracking on your client.
+The batch orchestrator will periodically call your tracker so it can report what's been going on so far.
+Create a function annotated with `@batch_tracker`.  In that function, you can do whatever you want, such as writing the progress to a database.
+
+    @batch_tracker
+    async def my_tracker(context: BatchTrackerContext):
+        record_my_progress(context.progress)
+
 # Contributor's guide
 
 ## VSCode developers

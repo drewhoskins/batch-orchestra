@@ -3,9 +3,9 @@
 Batch Orchestra is an easy-to-use library for reliably and scalably performing many like operations such as DB migrations and periodic batch jobs.
 It solves many problems for these scenarios, such as controllably parallel execution, fair pagination.  See a full list of features below.
 
-All you have to build is a page processor to process an individual page, and optionally a custom progress tracker.
+All you have to build is a page processor to process an individual page.
 
-In python, for example, that your page processor look something like this:
+In python, for example, your page processor could look like this:
 
     @page_processor
     class InflateProductPrices(PageProcessor):
@@ -38,6 +38,7 @@ That's it!  There's more customization you can do as well.
 
 The batch is parallelized and tracked using a [Temporal](https://temporal.io) workflow.
 
+Optionally, you can also implement a custom progress tracker.
 
 # Quick Start
 
