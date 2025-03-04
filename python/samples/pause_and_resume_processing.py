@@ -27,6 +27,8 @@ Original error: {e}
 """
 This sample shows how to pause and resume a batch job, or more generally how to change the level of parallelism.  
 """
+
+
 async def main(num_items):
     # Set up the connection to temporal-server.
     host = "localhost:7233"
@@ -49,23 +51,24 @@ Original error: {e}
     ProductDB.populate_table(db_connection, num_records=num_items)
 
     try:
-        print(f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail.")
+        print(
+            f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail."
+        )
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
         # Execute the migration
-        
+
         # start it
         handle: BatchOrchestratorHandle = await BatchOrchestratorClient(temporal_client).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
-                    name=InflateProductPrices.__name__, 
-                    page_size=page_size,
-                    args=args.to_json())
+                    name=InflateProductPrices.__name__, page_size=page_size, args=args.to_json()
                 ),
-            id=f"inflate_product_prices-{str(uuid.uuid4())}", 
-            task_queue="my-task-queue"
-            )
+            ),
+            id=f"inflate_product_prices-{str(uuid.uuid4())}",
+            task_queue="my-task-queue",
+        )
 
         time_slept = 0
 
@@ -79,7 +82,9 @@ Original error: {e}
                 print(f"Waiting for workflow {handle.id} to start...")
             else:
                 if progress.is_finished:
-                    raise RuntimeError(f"Workflow {handle.id} has already finished -- didn't have time to pause!  Consider increasing --num_items.")
+                    raise RuntimeError(
+                        f"Workflow {handle.id} has already finished -- didn't have time to pause!  Consider increasing --num_items."
+                    )
                 if progress.num_processing_pages + progress.num_completed_pages > 0:
                     print(f"Progress before pausing (after {time_slept} seconds): {progress}")
                     break
@@ -93,7 +98,9 @@ Original error: {e}
             time_slept += 1
             progress = await handle.get_progress()
             if progress.is_finished:
-                raise RuntimeError(f"Workflow {handle.id} has already finished -- didn't have time to resume!  Consider increasing --num_items.")
+                raise RuntimeError(
+                    f"Workflow {handle.id} has already finished -- didn't have time to resume!  Consider increasing --num_items."
+                )
 
             if progress.num_processing_pages == 0:
                 print(f"Success!  Progress has stopped after {time_slept} seconds: {progress}")
@@ -112,19 +119,26 @@ Original error: {e}
             if progress.is_finished:
                 break
         result = await handle.result()
-        print(f"Migration finished after less than {time_slept} seconds with {result.num_completed_pages} pages processed.\n"+
-              f"Max parallelism achieved: {result.max_parallelism_achieved}.")
+        print(
+            f"Migration finished after less than {time_slept} seconds with {result.num_completed_pages} pages processed.\n"
+            + f"Max parallelism achieved: {result.max_parallelism_achieved}."
+        )
 
     finally:
         os.remove(db_file.name)
         info = await handle.workflow_handle.describe()
         if info.status == temporalio.client.WorkflowExecutionStatus.RUNNING:
-            print("\nCanceling workflow") 
+            print("\nCanceling workflow")
             await handle.workflow_handle.cancel()
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to pause and then resume a batch migration.")
-    parser.add_argument("--num_items", type=int, default=10000, help="The number of items to populate the table with and process.")
+    parser = argparse.ArgumentParser(
+        description="Sample for using BatchOrchestrator to pause and then resume a batch migration."
+    )
+    parser.add_argument(
+        "--num_items", type=int, default=10000, help="The number of items to populate the table with and process."
+    )
     parser.usage = "poetry run python samples/pause_and_resume_processing.py --num_items <N, default 10000>"
     args = parser.parse_args()
     asyncio.run(main(args.num_items))

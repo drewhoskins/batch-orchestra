@@ -8,8 +8,10 @@ from datetime import datetime
 
 from temporalio.common import RetryPolicy
 
+
 def batch_orchestrator_input_default_initial_retry_policy():
     return RetryPolicy(maximum_attempts=10)
+
 
 @dataclass(kw_only=True)
 class BatchOrchestratorInput:
@@ -24,7 +26,7 @@ class BatchOrchestratorInput:
     batch_tracker: Optional[BatchTrackerContext] = None
     # Prepended to log messages to help you identify which batch is being processed.  Useful if the batch may requires
     # multiple workflows (with separate workflow IDs) to process.
-    batch_id: str = ''
+    batch_id: str = ""
     # The maximum number of pages to process in a single workflow run before continuing as new.
     # None (recommended) indicates to let Temporal decide.
     pages_per_run: Optional[int] = None
@@ -45,18 +47,19 @@ class BatchOrchestratorInput:
         # When sdk-python supports generics, we can add support for (serializable) cursor types here.
         first_cursor_str: str = ""
         # The start_to_close_timeout of the activity that runs your page processor.
-        # This should typically be within the drain allowance of the worker that runs your page processor.  That 
+        # This should typically be within the drain allowance of the worker that runs your page processor.  That
         # would allow your activity to finish in case of a graceful shutdown.
         timeout_seconds: int = 300
 
     @dataclass(kw_only=True)
     class BatchTrackerContext:
-        # A Callable that is called periodically with a BatchOrchestratorProgress object.  
+        # A Callable that is called periodically with a BatchOrchestratorProgress object.
         name: Optional[str] = None
         # Global arguents to pass into your batch tracker, such as configuration.  Many folks will use json to serialize.
         args: Optional[str] = None
         polling_interval_seconds: int = 300
-        timeout_seconds: int = 270 # less than the polling interval
+        timeout_seconds: int = 270  # less than the polling interval
+
 
 # Provides a snapshot of how many pages the orchestrator has processed.  You can get this information in two ways.
 # 1. You can [query](https://docs.temporal.io/dev-guide/python/features#send-query) the get_progress method on the BatchOrchestrator workflow handle from any client.
@@ -66,7 +69,7 @@ class BatchOrchestratorInput:
 class BatchOrchestratorProgress:
     # Pages which are failing to process but are still being retried.
     # TODO - report a list of stuck pages with exceptions
-    num_stuck_pages: int    
+    num_stuck_pages: int
     num_processing_pages: int
     num_completed_pages: int
     # Pages which have permanently failed (perhaps because they raised a non_retryable error).

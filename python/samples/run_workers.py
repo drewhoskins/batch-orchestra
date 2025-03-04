@@ -13,7 +13,7 @@ try:
 
     # Import our registry of page processors which are registered with @page_processor.
     # Without importing this, they will not be registered.
-    import lib.inflate_product_prices_page_processor  # noqa: F401
+    import samples.lib.inflate_product_prices_page_processor  # noqa: F401
 except ModuleNotFoundError as e:
     print(f"""
         This script requires poetry.  `poetry run python samples/run_workers.py`.
@@ -59,8 +59,10 @@ async def worker_async():
         await interrupt_event.wait()
         logging.info("Shutting down")
 
+
 def worker():
     asyncio.run(worker_async())
+
 
 def main(num_processes: int):
     processes = []
@@ -71,6 +73,7 @@ def main(num_processes: int):
         processes.append(p)
 
     return processes
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

@@ -1,29 +1,30 @@
-
 import sqlite3
 from typing import Optional
 import uuid
 from wonderwords import RandomWord
 import random
 
+
 class Product:
     def __init__(self, key: str, name: str, price: float, did_inflate_migration: int):
         self.key = key
         self.name = name
         self.price = price
-        self.did_inflate_migration: bool = (did_inflate_migration == 1)
+        self.did_inflate_migration: bool = did_inflate_migration == 1
 
     def __str__(self):
         return f"Product(key={self.key}, name={self.name}, price={self.price}, did_inflate_migration={self.did_inflate_migration})"
 
 
 class ProductDB:
-
-    @staticmethod    
+    @staticmethod
     def create_product():
-        return (str(uuid.uuid4()), 
-                f"{RandomWord().word(include_parts_of_speech=['adjectives'])} {RandomWord().word(include_parts_of_speech=['nouns'])}", 
-                random.uniform(1, 100),
-                0)
+        return (
+            str(uuid.uuid4()),
+            f"{RandomWord().word(include_parts_of_speech=['adjectives'])} {RandomWord().word(include_parts_of_speech=['nouns'])}",
+            random.uniform(1, 100),
+            0,
+        )
 
     @staticmethod
     def get_db_connection(filename):
@@ -32,18 +33,18 @@ class ProductDB:
     @staticmethod
     def populate_table(conn: sqlite3.Connection, *, num_records: int):
         cursor = conn.cursor()
-        cursor.execute('DROP TABLE IF EXISTS my_products')
-        cursor.execute('''
+        cursor.execute("DROP TABLE IF EXISTS my_products")
+        cursor.execute("""
     CREATE TABLE my_products (
         key TEXT PRIMARY KEY, 
         name TEXT, 
         price REAL,
         did_inflate_migration INTEGER)
-        ''')
+        """)
 
         # Fill up the table with some pricing data
         products = [ProductDB.create_product() for _ in range(num_records)]
-        cursor.executemany('INSERT INTO my_products VALUES (?,?,?,?)', products)
+        cursor.executemany("INSERT INTO my_products VALUES (?,?,?,?)", products)
         conn.commit()
 
     @staticmethod
@@ -53,7 +54,7 @@ class ProductDB:
         cursor.execute(f"SELECT * FROM my_products {where_clause} ORDER BY key LIMIT {page_size}")
         result_rows = cursor.fetchall()
         return [Product(*row) for row in result_rows]
-    
+
     @staticmethod
     async def inflate_price(conn: sqlite3.Connection, product: Product, factor: float):
         cursor = conn.cursor()
@@ -75,6 +76,3 @@ class ProductDB:
                 yield i, product
                 i += 1
             cursor = products[-1].key
-
-
-    
