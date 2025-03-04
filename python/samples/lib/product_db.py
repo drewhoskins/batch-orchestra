@@ -1,8 +1,9 @@
-import sqlite3
-from typing import Optional
-import uuid
-from wonderwords import RandomWord
 import random
+import sqlite3
+import uuid
+from typing import Optional
+
+from wonderwords import RandomWord
 
 
 class Product:
@@ -36,8 +37,8 @@ class ProductDB:
         cursor.execute("DROP TABLE IF EXISTS my_products")
         cursor.execute("""
     CREATE TABLE my_products (
-        key TEXT PRIMARY KEY, 
-        name TEXT, 
+        key TEXT PRIMARY KEY,
+        name TEXT,
         price REAL,
         did_inflate_migration INTEGER)
         """)

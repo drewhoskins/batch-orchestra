@@ -1,26 +1,25 @@
 from __future__ import annotations
+
 import sys
 
 try:
-    from asyncio import sleep
-    from dataclasses import asdict, dataclass
     import json
     import logging
-    import pytest
     import uuid
+    from asyncio import sleep
+    from dataclasses import asdict, dataclass
     from datetime import datetime, timedelta
     from typing import Optional
 
-    from temporalio.common import RetryPolicy
-    from temporalio.client import Client, WorkflowHandle, WorkflowFailureError, WorkflowContinuedAsNewError
-    from temporalio.worker import Worker
-    from temporalio.exceptions import ApplicationError, TimeoutError
-    from temporalio.service import RPCError
-
-    from batch_processor import BatchPage
+    import pytest
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
     from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-    from batch_processor import BatchProcessorContext, page_processor, PageProcessor
+    from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
+    from temporalio.client import Client, WorkflowContinuedAsNewError, WorkflowFailureError, WorkflowHandle
+    from temporalio.common import RetryPolicy
+    from temporalio.exceptions import ApplicationError, TimeoutError
+    from temporalio.service import RPCError
+    from temporalio.worker import Worker
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(
@@ -720,7 +719,7 @@ async def test_workflow_times_out(client: Client):
         except WorkflowFailureError as e:
             assert isinstance(e.__cause__, TimeoutError)
         else:
-            assert False, "Expected WorkflowFailureError"
+            raise AssertionError("Expected WorkflowFailureError")
 
 
 class MyHandler(logging.Handler):

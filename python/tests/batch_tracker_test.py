@@ -1,19 +1,18 @@
 from __future__ import annotations
+
 import sys
 
 try:
     from dataclasses import asdict
-    from unittest.mock import patch
     from datetime import datetime, timedelta
+    from unittest.mock import patch
 
     import pytest
-
-    from temporalio.client import WorkflowHandle, Client
-    from temporalio.testing import ActivityEnvironment
-
     from batch_orchestrator_io import BatchOrchestratorProgress
-    from batch_tracker import batch_tracker, track_batch_progress, BatchTrackerContext, BatchTrackerKeepPolling
+    from batch_tracker import BatchTrackerContext, BatchTrackerKeepPolling, batch_tracker, track_batch_progress
     from batch_worker import BatchWorkerClient
+    from temporalio.client import Client, WorkflowHandle
+    from temporalio.testing import ActivityEnvironment
 
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
@@ -65,7 +64,7 @@ async def test_stuck_page_tracker():
         except BatchTrackerKeepPolling:
             notify_mock.assert_called_once_with("my_batch_id", 1)
         else:
-            assert False, "Expected BatchTrackerKeepPolling to be raised"
+            raise AssertionError("Expected BatchTrackerKeepPolling to be raised")
 
 
 def notify_that_batch_is_past_slo(batch_id: str):
@@ -105,7 +104,7 @@ async def test_elapsed_time_tracker():
         except BatchTrackerKeepPolling:
             notify_mock.assert_not_called()
         else:
-            assert False, "Expected BatchTrackerKeepPolling to be raised"
+            raise AssertionError("Expected BatchTrackerKeepPolling to be raised")
 
         # But now pretend the batch has taken two hours.  The tracker should notify someone.
         then = datetime.now() - timedelta(hours=2)
@@ -125,7 +124,7 @@ async def test_elapsed_time_tracker():
         except BatchTrackerKeepPolling:
             notify_mock.assert_called_once_with("my_batch_id")
         else:
-            assert False, "Expected BatchTrackerKeepPolling to be raised"
+            raise AssertionError("Expected BatchTrackerKeepPolling to be raised")
 
 
 @pytest.mark.asyncio

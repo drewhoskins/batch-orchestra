@@ -2,8 +2,9 @@ import sys
 
 try:
     import argparse
-    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
     import asyncio
+
+    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
     from temporalio.client import Client
 except ModuleNotFoundError as e:
     print(f"""

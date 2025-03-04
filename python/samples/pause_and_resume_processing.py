@@ -1,21 +1,19 @@
 import sys
 
 try:
-    from asyncio import sleep
-    import asyncio
-    from tempfile import NamedTemporaryFile
-    import uuid
-    import os
     import argparse
+    import asyncio
+    import os
+    import uuid
+    from asyncio import sleep
+    from tempfile import NamedTemporaryFile
 
-    from temporalio.client import Client
     import temporalio.service
-
     from batch_orchestrator import BatchOrchestratorInput
     from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-
-    from lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
+    from lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
     from lib.product_db import ProductDB
+    from temporalio.client import Client
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/pause_and_resume_processing.py`.
@@ -25,7 +23,7 @@ Original error: {e}
     sys.exit(1)
 
 """
-This sample shows how to pause and resume a batch job, or more generally how to change the level of parallelism.  
+This sample shows how to pause and resume a batch job, or more generally how to change the level of parallelism.
 """
 
 

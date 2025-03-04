@@ -1,12 +1,13 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
+
 import inspect
 import logging
-from typing import Any, Optional
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
-from batch_worker import BatchWorkerContext
+from typing import Any, Optional
 
+from batch_worker import BatchWorkerContext
 from temporalio import activity
 from temporalio.common import RetryPolicy
 

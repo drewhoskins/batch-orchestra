@@ -5,11 +5,10 @@ try:
     import multiprocessing
     import sys
 
-    from temporalio.client import Client
-    from temporalio.worker import Worker
-
     from batch_orchestrator import BatchOrchestrator, process_page
     from batch_worker import BatchWorkerClient
+    from temporalio.client import Client
+    from temporalio.worker import Worker
 
     # Import our registry of page processors which are registered with @page_processor.
     # Without importing this, they will not be registered.

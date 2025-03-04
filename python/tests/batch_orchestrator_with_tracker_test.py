@@ -1,22 +1,22 @@
 from __future__ import annotations
+
 import sys
 
 from batch_orchestrator_client import BatchOrchestratorClient
 
 try:
-    from dataclasses import asdict, dataclass
-    from asyncio import sleep
     import json
-    import pytest
     import uuid
+    from asyncio import sleep
+    from dataclasses import asdict, dataclass
 
-    from temporalio.client import Client, WorkflowHandle
-    from temporalio.worker import Worker
-    from temporalio.common import RetryPolicy
-
-    from batch_processor import BatchProcessorContext, page_processor, PageProcessor
+    import pytest
     from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
+    from batch_processor import BatchProcessorContext, PageProcessor, page_processor
     from batch_tracker import BatchTrackerContext, batch_tracker, track_batch_progress
+    from temporalio.client import Client, WorkflowHandle
+    from temporalio.common import RetryPolicy
+    from temporalio.worker import Worker
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(

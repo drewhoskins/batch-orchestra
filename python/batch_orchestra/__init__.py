@@ -1,5 +1,5 @@
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
 
     try:
         __version__ = version("batch-orchestra")
@@ -11,5 +11,5 @@ except ImportError:
         import pkg_resources
 
         __version__ = pkg_resources.get_distribution("batch-orchestra").version
-    except:
+    except Exception:
         __version__ = "unknown"

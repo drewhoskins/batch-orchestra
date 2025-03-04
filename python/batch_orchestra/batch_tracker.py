@@ -1,12 +1,11 @@
 from __future__ import annotations
+
 import logging
 from typing import Optional
 
-from temporalio import activity
-
-from batch_processor import BatchWorkerContext
-
 from batch_orchestrator_io import BatchOrchestratorProgress
+from batch_processor import BatchWorkerContext
+from temporalio import activity
 
 _batch_tracker_registry = {}
 

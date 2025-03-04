@@ -1,13 +1,13 @@
 from __future__ import annotations
-from asyncio import sleep
-from dataclasses import asdict, dataclass
+
 import json
 import sys
-
+from asyncio import sleep
+from dataclasses import asdict, dataclass
 from typing import Optional
 
+from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
 
-from batch_processor import BatchProcessorContext, BatchPage, PageProcessor, page_processor
 from lib.product_db import ProductDB
 
 

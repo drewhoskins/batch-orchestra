@@ -2,10 +2,10 @@ import asyncio
 import multiprocessing
 import sys
 from typing import AsyncGenerator
-from batch_worker import BatchWorkerClient
 
 import pytest
 import pytest_asyncio
+from batch_worker import BatchWorkerClient
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
 

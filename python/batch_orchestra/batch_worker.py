@@ -1,10 +1,10 @@
 from __future__ import annotations
-from abc import ABC
+
 from typing import Optional
 
 import temporalio.client
-from temporalio.client import Client, WorkflowHandle
 from temporalio import activity
+from temporalio.client import Client, WorkflowHandle
 
 """
 BatchWorker class with configuration for the batch worker -- the processor and the tracker
@@ -55,7 +55,7 @@ Used by your @page_processor and @batch_tracker.
 """
 
 
-class BatchWorkerContext(ABC):
+class BatchWorkerContext:
     def __init__(self, activity_info: activity.Info):
         self._activity_info = activity_info
         self._parent_workflow: Optional[WorkflowHandle] = None

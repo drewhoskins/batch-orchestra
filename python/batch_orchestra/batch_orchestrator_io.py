@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-# This module concerns input and output (results/progress) for the BatchOrchestrator workflow.
-
-from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
+
+# This module concerns input and output (results/progress) for the BatchOrchestrator workflow.
+from typing import Optional
 
 from temporalio.common import RetryPolicy
 

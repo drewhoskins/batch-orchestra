@@ -1,20 +1,19 @@
 from __future__ import annotations
+
 import sys
 from typing import Type
 
 try:
-    from typing import Any, Sequence, Optional
-    from unittest.mock import patch, AsyncMock
+    from typing import Any, Optional, Sequence
+    from unittest.mock import AsyncMock, patch
 
     import pytest
-
-    from temporalio.client import WorkflowHandle, Client
-    from temporalio.testing import ActivityEnvironment
     import temporalio.common
     import temporalio.exceptions
-
+    from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor, process_page
     from batch_worker import BatchWorkerClient
-    from batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page, PageProcessor
+    from temporalio.client import Client, WorkflowHandle
+    from temporalio.testing import ActivityEnvironment
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(
@@ -27,10 +26,14 @@ except ModuleNotFoundError as e:
 async def run_page_processor(
     page_processor_name: Type,
     *,
-    env=ActivityEnvironment(),
+    env=None,
     batch_id: Optional[str] = None,
     did_signal_next_page: bool = False,
 ) -> Any:
+    if env is None:
+        # if we do this in the argument list, then ActivityEnvironment is instantiated once and reused
+        # for the entire lifetime of the program. We want to create a new one for each call
+        env = ActivityEnvironment()
     try:
         client = await Client.connect("localhost:7233")
     except RuntimeError as e:
@@ -80,7 +83,7 @@ async def test_invalid_page_processor_name():
         )
         assert "'ReturnsCursor'" in str(e)
     else:
-        assert False, "Should have thrown an error."
+        raise AssertionError("Should have thrown an error.")
 
 
 @page_processor
@@ -189,7 +192,7 @@ async def test_cannot_enqueue_two_pages():
                 + "is responsible for enqueuing the following page."
             )
         else:
-            assert False, "Should have asserted preventing the user from calling enqueue_next_page twice."
+            raise AssertionError("Should have asserted preventing the user from calling enqueue_next_page twice.")
 
 
 @pytest.mark.asyncio
@@ -207,7 +210,7 @@ async def test_uninitialized_client():
             + "Make sure to call BatchWorkerClient.register(client)."
         )
     else:
-        assert False, "Should have thrown an error."
+        raise AssertionError("Should have thrown an error.")
 
 
 @page_processor
