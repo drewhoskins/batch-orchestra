@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 
 # This module concerns input and output (results/progress) for the BatchOrchestrator workflow.
-from typing import Optional
+from typing import Any, Optional
 
 from temporalio.common import RetryPolicy
+
+from .batch_processor import PageProcessor
+from .batch_reduce import PageReducer
 
 
 def batch_orchestrator_input_default_initial_retry_policy():
@@ -31,6 +34,23 @@ class BatchOrchestratorInput:
     # None (recommended) indicates to let Temporal decide.
     pages_per_run: Optional[int] = None
 
+    batch_reducer: Optional[PageReducerContext] = None
+
+    def collect(self, reduce: PageReducerContext) -> "BatchOrchestratorInput":
+        return BatchOrchestratorInput(
+            max_parallelism=self.max_parallelism,
+            page_processor=self.page_processor,
+            batch_reducer=reduce,
+        )
+
+    @dataclass(kw_only=True)
+    class PageReducerContext:
+        name: str
+
+        @classmethod
+        def from_impl(cls, impl: type[PageReducer]):
+            return cls(name=impl.__name__)
+
     @dataclass(kw_only=True)
     class PageProcessorContext:
         # The function, annotated with @page_processor, that will be called on your worker for each page
@@ -50,6 +70,36 @@ class BatchOrchestratorInput:
         # This should typically be within the drain allowance of the worker that runs your page processor.  That
         # would allow your activity to finish in case of a graceful shutdown.
         timeout_seconds: int = 300
+
+        @classmethod
+        def from_impl(
+            cls,
+            impl: type[PageProcessor],
+            *,
+            # The number of items per page, to process in series.  Choose an amount that you can comfortably
+            # process within the page_timeout_seconds.
+            page_size: int,
+            # Global arguments to pass into each page processor, such as configuration.  Many folks will use json to serialize.
+            # Any arguments that need to vary per page should be included in your cursor.
+            args: Optional[str] = None,
+            # The cursor, for example a database cursor, from which to start paginating.
+            # Use this if you want to start a batch from a specific cursor such as where a previous run left off or if
+            # you are dividing up a large dataset into multiple batches.
+            # When sdk-python supports generics, we can add support for (serializable) cursor types here.
+            first_cursor_str: str = "",
+            # The start_to_close_timeout of the activity that runs your page processor.
+            # This should typically be within the drain allowance of the worker that runs your page processor.  That
+            # would allow your activity to finish in case of a graceful shutdown.
+            timeout_seconds: int = 300,
+        ):
+            """A convencience method that augments the PageProcessor with type information / the name from your impl."""
+            return cls(
+                name=impl.__name__,
+                page_size=page_size,
+                args=args,
+                first_cursor_str=first_cursor_str,
+                timeout_seconds=timeout_seconds,
+            )
 
     @dataclass(kw_only=True)
     class BatchTrackerContext:
@@ -78,6 +128,9 @@ class BatchOrchestratorProgress:
     _start_timestamp: float
     # You can monitor this to ensure you are getting as much parallel processing as you hoped for.
     max_parallelism_achieved: int
+
+    """The value of the mapreduce, if any"""
+    output: Any = None
 
     # The second when the BatchOrchestrator workflow began executing.
     def start_time(self) -> datetime:

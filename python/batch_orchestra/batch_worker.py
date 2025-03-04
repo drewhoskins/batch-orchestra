@@ -20,7 +20,8 @@ class BatchWorkerClient:
 
     @staticmethod
     def register(client: temporalio.client.Client) -> temporalio.client.Client:
-        return BatchWorkerClient.get_instance().set_temporal_client(client).get_temporal_client()
+        BatchWorkerClient.get_instance().set_temporal_client(client)
+        return client
 
     def __new__(cls):
         if cls._instance is None:

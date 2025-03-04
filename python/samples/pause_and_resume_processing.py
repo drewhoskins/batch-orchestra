@@ -1,4 +1,7 @@
 import sys
+from typing import Optional
+
+from temporalio.client import WorkflowExecutionStatus
 
 try:
     import argparse
@@ -50,6 +53,7 @@ Original error: {e}
 
     ProductDB.populate_table(db_connection, num_records=num_items)
 
+    handle = None
     try:
         print(
             f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail."
@@ -59,7 +63,7 @@ Original error: {e}
         # Execute the migration
 
         # start it
-        handle: BatchOrchestratorHandle = await BatchOrchestratorClient(temporal_client).start(
+        handle = await BatchOrchestratorClient(temporal_client).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
@@ -126,10 +130,11 @@ Original error: {e}
 
     finally:
         os.remove(db_file.name)
-        info = await handle.workflow_handle.describe()
-        if info.status == temporalio.client.WorkflowExecutionStatus.RUNNING:
-            print("\nCanceling workflow")
-            await handle.workflow_handle.cancel()
+        if handle:
+            info = await handle.workflow_handle.describe()
+            if info.status == WorkflowExecutionStatus.RUNNING:
+                print("\nCanceling workflow")
+                await handle.workflow_handle.cancel()
 
 
 if __name__ == "__main__":

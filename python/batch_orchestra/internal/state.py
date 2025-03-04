@@ -13,9 +13,9 @@ class EnqueuedPage:
     page_num: int
     did_signal_next_page: bool = False
     last_exception: Optional[BaseException] = None
-    future: Optional[Future[str]] = None
+    future: Optional[Future] = None
 
-    def set_processing_started(self, future: Future[str]) -> None:
+    def set_processing_started(self, future: Future) -> None:
         self.future = future
 
     def set_processing_finished(self) -> None:

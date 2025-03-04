@@ -11,6 +11,8 @@ try:
     from temporalio.worker import Worker
 
     from batch_orchestra.batch_orchestrator import BatchOrchestrator, process_page
+    from batch_orchestra.batch_orchestrator_reduce import BatchOrchestratorReduce
+    from batch_orchestra.batch_processor_reduce import reduce_page
     from batch_orchestra.batch_worker import BatchWorkerClient
 
     from .lib import inflate_product_prices_page_processor  # noqa: F401
@@ -50,8 +52,8 @@ async def worker_async():
     async with Worker(
         temporal_client,
         task_queue=TASK_QUEUE,
-        activities=[process_page],
-        workflows=[BatchOrchestrator],
+        activities=[process_page, reduce_page],
+        workflows=[BatchOrchestrator, BatchOrchestratorReduce],
         debug_mode=True,
     ):
         # Wait until interrupted

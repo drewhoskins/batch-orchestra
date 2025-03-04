@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import uuid
 from asyncio import Future
 from datetime import timedelta
-from typing import Dict, Optional, Set, Type
+from typing import Coroutine, Dict, Optional, Set, Type
 
 import inflect
 from temporalio import workflow
@@ -11,7 +13,9 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError, CancelledError
 
 from .batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
+from .batch_orchestrator_reduce import BatchOrchestratorReduce
 from .batch_processor import BatchPage, PageProcessor, get_page_processor, process_page
+from .batch_reduce_handle import ReduceHandle
 from .batch_tracker import track_batch_progress
 from .internal.state import ContinueAsNewState, EnqueuedPage, PageTrackerData
 
@@ -52,7 +56,7 @@ class BatchOrchestrator:
         self, input: BatchOrchestratorInput, state: Optional[ContinueAsNewState]
     ) -> BatchOrchestratorProgress:
         print(f"Running batch orchestrator with input: {input} and state: {state}.")
-        self._run_init(input=input, state=state)
+        await self._run_init(input=input, state=state)
 
         self.start_progress_tracker()
 
@@ -71,18 +75,22 @@ class BatchOrchestrator:
             self.page_queue.re_enqueue_stuck_pages()
             await self.page_queue.run()
 
+        output = None
+        if self.page_queue.reduce_handle is not None:
+            output = await self.page_queue.reduce_handle.done()
+
         self.logger.info(f"BatchOrchestrator completed {self.page_queue.page_tracker.num_completed_pages} pages")
 
         self.page_queue.page_tracker.on_finished()
         await self.finalize_progress_tracker()
-        return self.current_progress()
+        return self.current_progress(output)
 
     # Query the current progress of the batch.  If you know how many records you have, you can even provide a progress bar.
     # Invoke it as you would any Temporal query.  For example
     # handle = await client.start_workflow(...) (as documented in the run method)
     # progress = await handle.query(BatchOrchestrator.current_progress)
     @workflow.query
-    def current_progress(self) -> BatchOrchestratorProgress:
+    def current_progress(self, output=None) -> BatchOrchestratorProgress:
         return BatchOrchestratorProgress(
             num_completed_pages=self.page_queue.page_tracker.num_completed_pages,
             max_parallelism_achieved=self.page_queue.page_tracker.max_parallelism_achieved,
@@ -90,6 +98,7 @@ class BatchOrchestrator:
             num_stuck_pages=len(self.page_queue.page_tracker.stuck_page_nums),
             num_failed_pages=len(self.page_queue.page_tracker.failed_page_nums),
             is_finished=self.page_queue.page_tracker.is_finished,
+            output=output,
             _start_timestamp=self.start_time.timestamp(),
         )
 
@@ -295,6 +304,7 @@ class BatchOrchestrator:
             input: BatchOrchestratorInput,
             logger: Type["BatchOrchestrator.LoggerAdapter"],
             state: Optional[ContinueAsNewState],
+            reducer_handle: Optional[workflow.ChildWorkflowHandle],
         ) -> None:
             self.input = input
             self.page_processor: PageProcessor = get_page_processor(input.page_processor.name)
@@ -308,6 +318,7 @@ class BatchOrchestrator:
             self.page_tracker = BatchOrchestrator.PageQueue.PageTracker(
                 page_tracker_data, pages_per_run=self.input.pages_per_run
             )
+            self.reduce_handle = ReduceHandle(reducer_handle) if reducer_handle else None
             self.logger = logger
 
         # Receive new work from a page processor
@@ -395,18 +406,22 @@ class BatchOrchestrator:
 
             self.pages[page_num].set_processing_got_stuck(exception, did_signal_next_page)
 
-        def on_page_processed(self, future: Future[str], page_num: int, page: BatchPage) -> None:
-            exception = future.exception()
-            self.logger.info(f"On page processed {page_num} {page} {exception}")
-            if exception is not None:
-                assert isinstance(exception, ActivityError)
-                exception = exception.__cause__
-                assert exception is not None
-                self.on_page_failing(page, page_num, exception)
-            else:
-                self.logger.info(f"Batch orchestrator completed {self.logger.describe_page(page_num, page)}.")
-                self.pages[page_num].set_processing_finished()
-                self.page_tracker.on_page_completed(page_num)
+        # We need to do an async operation after the page processor completes, so it must be wrapped in an asyncio task.
+        def create_page_processed_handler_task(self, coroutine: Coroutine, page_num: int, page: BatchPage) -> Future:
+            async def page_processed_handler_task():
+                try:
+                    result = await coroutine
+                    self.logger.info(f"Batch orchestrator completed {self.logger.describe_page(page_num, page)}.")
+                    self.pages[page_num].set_processing_finished()
+                    self.page_tracker.on_page_completed(page_num)
+                    if self.reduce_handle:
+                        await self.reduce_handle.send(result)
+                except ActivityError as exception:
+                    exception = exception.__cause__
+                    assert exception is not None
+                    self.on_page_failing(page, page_num, exception)
+
+            return asyncio.create_task(page_processed_handler_task())
 
         # Initiate processing the page and register a callback to record that it finished
         def start_page_processor_activity(self, enqueued_page: EnqueuedPage) -> None:
@@ -416,20 +431,24 @@ class BatchOrchestrator:
             workflow.logger.info(
                 f"Starting page processor for {self.logger.describe_page(page_num, page)}.  Already tried: {already_tried}."
             )
-            future = workflow.start_activity(
-                process_page,
-                args=[
-                    self.input.page_processor.name,
-                    self.input.batch_id,
-                    page,
-                    page_num,
-                    self.input.page_processor.args,
-                    enqueued_page.did_signal_next_page,
-                ],
-                start_to_close_timeout=timedelta(seconds=self.input.page_processor.timeout_seconds),
-                retry_policy=self._build_retry_policy(self.page_processor, already_tried),
+
+            future = self.create_page_processed_handler_task(
+                workflow.execute_activity(
+                    process_page,
+                    args=[
+                        self.input.page_processor.name,
+                        self.input.batch_id,
+                        page,
+                        page_num,
+                        self.input.page_processor.args,
+                        enqueued_page.did_signal_next_page,
+                    ],
+                    start_to_close_timeout=timedelta(seconds=self.input.page_processor.timeout_seconds),
+                    retry_policy=self._build_retry_policy(self.page_processor, already_tried),
+                ),
+                page_num,
+                page,
             )
-            future.add_done_callback(lambda future: self.on_page_processed(future, page_num, page))
             enqueued_page.set_processing_started(future)
             self.page_tracker.on_page_started(page_num)
 
@@ -465,9 +484,18 @@ class BatchOrchestrator:
             else:
                 return page_processor.initial_retry_policy
 
-    def _run_init(self, *, input: BatchOrchestratorInput, state: Optional[ContinueAsNewState]) -> None:
+    async def _run_init(self, *, input: BatchOrchestratorInput, state: Optional[ContinueAsNewState]) -> None:
         self.input = input
         self.logger = BatchOrchestrator.LoggerAdapter(input)
-        self.page_queue = BatchOrchestrator.PageQueue(input=input, logger=self.logger, state=state)
+        reducer_handle = None
+        if input.batch_reducer:
+            reducer_handle = await workflow.start_child_workflow(
+                BatchOrchestratorReduce.run,
+                input.batch_reducer,
+                id=str(uuid.uuid4()),
+            )
+        self.page_queue = BatchOrchestrator.PageQueue(
+            input=input, logger=self.logger, state=state, reducer_handle=reducer_handle
+        )
         self.start_time = workflow.now()
         self.page_processor: PageProcessor = get_page_processor(input.page_processor.name)

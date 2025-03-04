@@ -51,3 +51,7 @@ ignore = [
     "E501",  # line too long, just fix with formatter instead
     "N818"   # exception name should be named with an Error suffix
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

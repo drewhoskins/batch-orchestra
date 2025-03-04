@@ -12,6 +12,10 @@ class BatchOrchestratorHandle:
     def __init__(self, handle: temporalio.client.WorkflowHandle[Any, BatchOrchestratorProgress]):
         self._handle = handle
 
+    @property
+    def id(self):
+        pass
+
     # See how far the batch has progressed from your client.
     # You can instead track progress without the need for a client by implementing a @batch_tracker.
     async def get_progress(self) -> BatchOrchestratorProgress:
@@ -48,7 +52,9 @@ class BatchOrchestratorHandle:
 
     # Use the workflow handle to access normal Temporal operations such as cancel and terminate.
     @property
-    def workflow_handle(self) -> temporalio.client.WorkflowHandle[Any, BatchOrchestratorProgress]:
+    def workflow_handle(
+        self,
+    ) -> temporalio.client.WorkflowHandle[Any, BatchOrchestratorProgress]:
         return self._handle
 
 

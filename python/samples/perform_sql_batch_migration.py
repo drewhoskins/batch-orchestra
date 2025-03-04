@@ -1,9 +1,10 @@
 import sys
 from asyncio import sleep
-from typing import Any, Optional
+from typing import Optional
 
-from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
+from temporalio.client import WorkflowExecutionStatus
+
+from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient
 
 try:
     import argparse
@@ -17,6 +18,7 @@ try:
 
     from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
 
+    from .lib.collect_product_updates import MyBatchReduce
     from .lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
     from .lib.product_db import ProductDB
 except ModuleNotFoundError as e:
@@ -61,23 +63,23 @@ Original error: {e}
     db_connection = ProductDB.get_db_connection(db_file.name)
 
     ProductDB.populate_table(db_connection, num_records=num_items)
+    handle = None
     try:
         print(
             f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail."
         )
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
+
         # Execute the migration
-        handle: BatchOrchestratorHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(
-            temporal_client
-        ).start(
+        handle = await BatchOrchestratorClient(temporal_client).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
                     name=InflateProductPrices.__name__, page_size=page_size, args=args.to_json()
                 ),
                 pages_per_run=pages_per_run,
-            ),
+            ).collect(BatchOrchestratorInput.PageReducerContext(name=MyBatchReduce.__name__)),
             id=f"inflate_product_prices-{name or str(uuid.uuid4())}",
             task_queue="my-task-queue",
         )
@@ -104,7 +106,8 @@ Original error: {e}
 
         print(
             f"Migration finished after less than {time_slept} seconds with {result.num_completed_pages} pages processed.\n"
-            + f"Max parallelism achieved: {result.max_parallelism_achieved}."
+            + f"Max parallelism achieved: {result.max_parallelism_achieved}.\n"
+            + f"Total documents processed: {result.output}."
         )
 
         # Verify that we adjusted the prices on all rows.
@@ -120,10 +123,11 @@ Original error: {e}
 
     finally:
         os.remove(db_file.name)
-        info = await handle.workflow_handle.describe()
-        if info.status == temporalio.client.WorkflowExecutionStatus.RUNNING:
-            print("\nCanceling workflow")
-            await handle.workflow_handle.cancel()
+        if handle:
+            info = await handle.workflow_handle.describe()
+            if info.status == WorkflowExecutionStatus.RUNNING:
+                print("\nCanceling workflow")
+                await handle.workflow_handle.cancel()
 
 
 if __name__ == "__main__":
