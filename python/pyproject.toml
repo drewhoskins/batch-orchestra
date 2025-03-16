@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "batch-orchestra-python"
+name = "batch-orchestra"
 version = "0.1.0"
 description = "An easy-to-use library for reliably and scalably performing many like operations, orchestrated using [Temporal](https://temporal.io) workflows and activities."
 authors = ["Drew Hoskins"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    { include = "**/*.py", from = "."  }
+    { include = "**/*.py", from = "./batch_orchestra/"  }
 ]
 
 [tool.poetry.dependencies]
