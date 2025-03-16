@@ -4,9 +4,9 @@ First, set up [Temporal prerequisites](../README.md#quick-start)
 
 You'll also need python (I've tested with 3.10).
 
-You can use poetry or pip.
+You can use poetry (easiest) or pip.
 
-## Poetry instructions 
+## Instructions if you use poetry
 
 [poetry](https://python-poetry.org/) is supported.
 
@@ -36,11 +36,16 @@ Then use pytest to run the tests:
 
 You may also run the samples, which are currently the best place to get an idea of how to implement.  See the [samples README](./samples/README.md)
 
-## Pip instructions
+## Instructions if you use pip
 
 Run the following from the python directory:
 
-Production dependencies:
+Create a virtual environment for isolation
+
+    python -m venv my_batch_orchestra_env
+    source my_batch_orchestra_env/bin/activate
+
+Install production dependencies:
 
     pip install -e .
 
