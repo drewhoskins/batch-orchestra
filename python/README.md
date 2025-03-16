@@ -2,7 +2,13 @@
 
 First, set up [Temporal prerequisites](../README.md#quick-start)
 
-You'll also need python (I've tested with 3.10) and [poetry](https://python-poetry.org/).
+You'll also need python (I've tested with 3.10).
+
+You can use poetry or pip.
+
+## Poetry instructions 
+
+[poetry](https://python-poetry.org/) is supported.
 
 If you don't already have poetry:
 
@@ -29,6 +35,18 @@ Then use pytest to run the tests:
     poetry run pytest tests/
 
 You may also run the samples, which are currently the best place to get an idea of how to implement.  See the [samples README](./samples/README.md)
+
+## Pip instructions
+
+Run the following from the python directory:
+
+Production dependencies:
+
+    pip install -e .
+
+If you want to run tests and samples:
+
+    pip install -r requirements-dev.txt
 
 # Page processors
 

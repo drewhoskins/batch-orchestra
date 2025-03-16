@@ -286,7 +286,7 @@ class FailsOnce(PageProcessor):
         global did_attempt_fails_once
         if not did_attempt_fails_once:
             did_attempt_fails_once = True
-            raise ValueError("I failed")
+            raise ValueError("I failed (note: this is expected during testing)")
     
     @property
     def retry_mode(self):
@@ -347,7 +347,7 @@ class FailsBeforeSignal(PageProcessor):
         should_fail = not did_attempt_fails_before_signal
         did_attempt_fails_before_signal = True
         if should_fail:
-            raise ValueError("I failed")
+            raise ValueError("I failed (note: this is expected during testing)")
         if context.page.cursor_str == "page one":
             await context.enqueue_next_page(BatchPage("page two", 10))
 
@@ -381,7 +381,7 @@ class TwoPagesOneFailsNoRetries(PageProcessor):
     async def run(self, context: BatchProcessorContext):
         if context.page.cursor_str == "page one":
             await context.enqueue_next_page(BatchPage("page two", 10))
-            raise ValueError("I failed")
+            raise ValueError("I failed (note: this is expected during testing)")
         
     @property
     def retry_mode(self):
@@ -418,7 +418,7 @@ class FailsAfterSignal(PageProcessor):
             await context.enqueue_next_page(BatchPage("page two", current_page.size))
         await sleep(0.1)
         if should_fail:
-            raise ValueError("I failed")
+            raise ValueError("I failed (note: this is expected during testing)")
     
     @property
     def retry_mode(self):
@@ -570,7 +570,7 @@ class TwoRetriesNoExtended(PageProcessor):
     async def run(self, context: BatchProcessorContext):
         global call_count 
         call_count += 1
-        raise ValueError("I failed")
+        raise ValueError("I failed (note: this is expected during testing)")
     
     @property
     def retry_mode(self):
@@ -608,7 +608,7 @@ class FailsPermanently(PageProcessor):
     async def run(self, context: BatchProcessorContext):
         global call_count 
         call_count += 1
-        raise ValueError("I failed")
+        raise ValueError("I failed (note: this is expected during testing)")
     
     @property
     def retry_mode(self):
