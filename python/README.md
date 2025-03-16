@@ -75,10 +75,12 @@ Copy your payload in.
 Some things to keep an eye on/ that I want to tackle before the initial release 
 
 * Should pass cursors as raw rather than str?
-* Harmonize with python-sdk and python best practices.  (What did I miss?)
+* Harmonize with python best practices.  (What did I miss?)
 
 
 # Roadmap
 * Error handling
   * Call a handler when there are initial failures, to be used for notifications and such.
   * Allow users to designate individual records as failures and proceed with the rest of their page.
+* Reducer
+  * In MapReduce terms, batch orchestra is currently a Map operation.  We want to add a Reduce step.
