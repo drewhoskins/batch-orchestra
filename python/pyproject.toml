@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "batch-orchestra-python"
-version = "0.1.0"
+name = "batch-orchestra"
+version = "0.2.0"
 description = "An easy-to-use library for reliably and scalably performing many like operations, orchestrated using [Temporal](https://temporal.io) workflows and activities."
 authors = ["Drew Hoskins"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    { include = "**/*.py", from = "."  }
+    { include = "**/*.py", from = "./batch_orchestra/"  }
 ]
 
 [tool.poetry.dependencies]
@@ -27,6 +27,7 @@ log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(linen
 pytest = "^7.1.2"
 pytest-asyncio = "^0.18.3"
 wonderwords = "^2.2.0"
+
 
 [build-system]
 requires = ["poetry-core"]

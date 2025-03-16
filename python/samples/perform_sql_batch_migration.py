@@ -17,8 +17,8 @@ try:
     from batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestrator import BatchOrchestratorInput
 
-    from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
-    from samples.lib.product_db import ProductDB
+    from lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
+    from lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.

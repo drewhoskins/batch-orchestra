@@ -13,7 +13,7 @@ try:
 
     # Import our registry of page processors which are registered with @page_processor.
     # Without importing this, they will not be registered.
-    import samples.lib.inflate_product_prices_page_processor  # noqa: F401
+    import lib.inflate_product_prices_page_processor  # noqa: F401
 except ModuleNotFoundError as e:
     print(f"""
         This script requires poetry.  `poetry run python samples/run_workers.py`.
