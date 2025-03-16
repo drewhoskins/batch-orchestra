@@ -8,7 +8,7 @@ from typing import Optional
 
 
 from batch_processor import BatchProcessorContext, BatchPage, PageProcessor, page_processor
-from samples.lib.product_db import ProductDB
+from lib.product_db import ProductDB
 
 @dataclass
 class ConfigArgs:
