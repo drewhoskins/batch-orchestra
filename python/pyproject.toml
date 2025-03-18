@@ -15,7 +15,7 @@ packages = [
 # - I believe that the kw_only annotation on @dataclass is 3.10.  That can probably be easily worked around.
 python = "^3.10"
 temporalio = "^1.5.0"
-inflect = "^7.0.0"
+inflect = "^7.5.0"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
@@ -23,12 +23,31 @@ log_cli = true
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.1.2"
 pytest-asyncio = "^0.18.3"
 wonderwords = "^2.2.0"
+ruff = "^0.9.9"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "N",  # PEP8 naming conventions
+]
+ignore = [
+    "E501",  # line too long, just fix with formatter instead
+    "N818"   # exception name should be named with an Error suffix
+]

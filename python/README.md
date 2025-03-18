@@ -100,6 +100,13 @@ Some things to keep an eye on/ that I want to tackle before the initial release
 * Should pass cursors as raw rather than str?
 * Harmonize with python best practices.  (What did I miss?)
 
+## Linting / formatting
+
+We use [ruff](https://github.com/astral-sh/ruff) for linting and formatting. It is not enforced in CI,
+but you can run it locally like so:
+
+    poetry run ruff format
+    poetry run ruff check
 
 # Roadmap
 * Error handling
