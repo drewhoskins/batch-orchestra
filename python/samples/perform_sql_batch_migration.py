@@ -2,8 +2,8 @@ import sys
 from asyncio import sleep
 from typing import Any, Optional
 
-from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-from batch_orchestrator_io import BatchOrchestratorProgress
+from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
 
 try:
     import argparse
@@ -13,10 +13,12 @@ try:
     from tempfile import NamedTemporaryFile
 
     import temporalio.service
-    from batch_orchestrator import BatchOrchestratorInput
-    from lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
-    from lib.product_db import ProductDB
     from temporalio.client import Client
+
+    from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
+
+    from .lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
+    from .lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.

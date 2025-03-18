@@ -4,8 +4,9 @@ try:
     import argparse
     import asyncio
 
-    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
     from temporalio.client import Client
+
+    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.

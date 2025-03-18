@@ -5,14 +5,15 @@ try:
     import multiprocessing
     import sys
 
-    from batch_orchestrator import BatchOrchestrator, process_page
-    from batch_worker import BatchWorkerClient
+    # Import our registry of page processors which are registered with @page_processor.
+    # Without importing this, they will not be registered.
     from temporalio.client import Client
     from temporalio.worker import Worker
 
-    # Import our registry of page processors which are registered with @page_processor.
-    # Without importing this, they will not be registered.
-    import samples.lib.inflate_product_prices_page_processor  # noqa: F401
+    from batch_orchestra.batch_orchestrator import BatchOrchestrator, process_page
+    from batch_orchestra.batch_worker import BatchWorkerClient
+
+    from .lib import inflate_product_prices_page_processor  # noqa: F401
 except ModuleNotFoundError as e:
     print(f"""
         This script requires poetry.  `poetry run python samples/run_workers.py`.

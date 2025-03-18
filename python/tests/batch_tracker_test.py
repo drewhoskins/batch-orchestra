@@ -8,11 +8,17 @@ try:
     from unittest.mock import patch
 
     import pytest
-    from batch_orchestrator_io import BatchOrchestratorProgress
-    from batch_tracker import BatchTrackerContext, BatchTrackerKeepPolling, batch_tracker, track_batch_progress
-    from batch_worker import BatchWorkerClient
     from temporalio.client import Client, WorkflowHandle
     from temporalio.testing import ActivityEnvironment
+
+    from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
+    from batch_orchestra.batch_tracker import (
+        BatchTrackerContext,
+        BatchTrackerKeepPolling,
+        batch_tracker,
+        track_batch_progress,
+    )
+    from batch_orchestra.batch_worker import BatchWorkerClient
 
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")

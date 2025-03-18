@@ -5,9 +5,10 @@ from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from batch_worker import BatchWorkerClient
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
+
+from batch_orchestra.batch_worker import BatchWorkerClient
 
 #
 # This file was copied from https://github.com/temporalio/samples-python/blob/main/tests/conftest.py
