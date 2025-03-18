@@ -43,8 +43,8 @@ class PageProcessor(ABC):
 
     # You must choose whether your page processor can be retried in the event of a failure or timeout.
     @property
-    @abstractmethod 
-    def retry_mode(self):
+    @abstractmethod
+    def retry_mode(self) -> RetryMode:
         pass
 
     @abstractmethod
