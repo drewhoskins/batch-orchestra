@@ -2,12 +2,13 @@ import asyncio
 import multiprocessing
 import sys
 from typing import AsyncGenerator
-from batch_worker import BatchWorkerClient
 
 import pytest
 import pytest_asyncio
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
+
+from batch_orchestra.batch_worker import BatchWorkerClient
 
 #
 # This file was copied from https://github.com/temporalio/samples-python/blob/main/tests/conftest.py
@@ -20,12 +21,14 @@ from temporalio.testing import WorkflowEnvironment
 if sys.version_info < (3, 8) and sys.platform.startswith("darwin"):
     multiprocessing.set_start_method("spawn", True)
 
+
 def pytest_addoption(parser):
     parser.addoption(
         "--workflow-environment",
         default="localhost:7233",
         help="Where to execute the workflows in tests: 'local', 'time-skipping', or target a local server (e.g. 'localhost:7233')",
     )
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -47,10 +50,10 @@ async def env(request) -> AsyncGenerator[WorkflowEnvironment, None]:
     if env_type == "local":
         # TODO
         raise NotImplementedError("Something's not working yet in this mode.")
-#        env = await WorkflowEnvironment.start_local()
+    #        env = await WorkflowEnvironment.start_local()
     elif env_type == "time-skipping":
         raise NotImplementedError("Time-skipping mode is untested.")
-#        env = await WorkflowEnvironment.start_time_skipping()
+    #        env = await WorkflowEnvironment.start_time_skipping()
     else:
         try:
             client = await Client.connect(env_type)
