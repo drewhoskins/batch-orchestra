@@ -1,24 +1,24 @@
-from asyncio import sleep
 import sys
+from asyncio import sleep
 from typing import Any, Optional
 
-from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
 
 try:
-    import asyncio
-    from tempfile import NamedTemporaryFile
-    import uuid
-    import os
     import argparse
+    import asyncio
+    import os
+    import uuid
+    from tempfile import NamedTemporaryFile
 
-    from temporalio.client import Client, WorkflowHandle
     import temporalio.service
+    from temporalio.client import Client
 
-    from batch_orchestrator_io import BatchOrchestratorProgress
-    from batch_orchestrator import BatchOrchestratorInput
+    from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
 
-    from lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
-    from lib.product_db import ProductDB
+    from .lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
+    from .lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.
@@ -27,18 +27,18 @@ Original error: {e}
         """)
     sys.exit(1)
 
-                                                                              
+
 #
 # This sample shows a typical parallel batch migration of an entire sqlite table on an example table of products
 # and their prices.  This file is the caller; see inflate_product_prices_page_processor.py for the implementation.
 # To run this sample:
-#  1. Start a temporal server locally, e.g. with 
+#  1. Start a temporal server locally, e.g. with
 #     docker-compose up
-#   or 
+#   or
 #     temporal server start-dev --db-filename batch_orchestra_samples.db
-#  2. Start your workers with 
+#  2. Start your workers with
 #     poetry run python samples/run_workers.py
-#  3. Run this script with 
+#  3. Run this script with
 #     poetry run python samples/perform_sql_batch_migration.py
 #
 async def main(num_items, pages_per_run, name: Optional[str]):
@@ -62,26 +62,31 @@ Original error: {e}
 
     ProductDB.populate_table(db_connection, num_records=num_items)
     try:
-        print(f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail.")
+        print(
+            f"Starting migration on --num_items={num_items} items.  Check your worker's output to see what's happening in detail."
+        )
         args = ConfigArgs(db_file=db_file.name)
         page_size = 200
         # Execute the migration
-        handle: BatchOrchestratorHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(temporal_client).start(
+        handle: BatchOrchestratorHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(
+            temporal_client
+        ).start(
             BatchOrchestratorInput(
                 max_parallelism=5,
                 page_processor=BatchOrchestratorInput.PageProcessorContext(
-                    name=InflateProductPrices.__name__, 
-                    page_size=page_size,
-                    args=args.to_json()),
-                pages_per_run=pages_per_run
+                    name=InflateProductPrices.__name__, page_size=page_size, args=args.to_json()
+                ),
+                pages_per_run=pages_per_run,
             ),
-            id=f"inflate_product_prices-{name or str(uuid.uuid4())}", 
-            task_queue="my-task-queue"
-            )
-        
-        print(f"See your batch job at http://localhost:8233/namespaces/default/workflows/{handle.workflow_handle.id}/{handle.workflow_handle.first_execution_run_id}/history.")
+            id=f"inflate_product_prices-{name or str(uuid.uuid4())}",
+            task_queue="my-task-queue",
+        )
 
-        # Suppose we want to track intermediate progress.  We could add a batch_tracker to run a tracker on the worker, 
+        print(
+            f"See your batch job at http://localhost:8233/namespaces/default/workflows/{handle.workflow_handle.id}/{handle.workflow_handle.first_execution_run_id}/history."
+        )
+
+        # Suppose we want to track intermediate progress.  We could add a batch_tracker to run a tracker on the worker,
         # but for this sample, we'll query the BatchOrchestrator so we can show something in this console window.
         time_slept = 0
         while True:
@@ -97,14 +102,16 @@ Original error: {e}
                 print(f"Current progress after {time_slept} seconds: {progress}")
         result = await handle.result()
 
-        print(f"Migration finished after less than {time_slept} seconds with {result.num_completed_pages} pages processed.\n"+
-              f"Max parallelism achieved: {result.max_parallelism_achieved}.")
+        print(
+            f"Migration finished after less than {time_slept} seconds with {result.num_completed_pages} pages processed.\n"
+            + f"Max parallelism achieved: {result.max_parallelism_achieved}."
+        )
 
         # Verify that we adjusted the prices on all rows.
         db_connection = ProductDB.get_db_connection(db_file.name)
         num_bad_apples = 0
 
-        for (i, product) in ProductDB.for_each_product(db_connection):
+        for i, product in ProductDB.for_each_product(db_connection):
             if not product.did_inflate_migration:
                 num_bad_apples += 1
                 print(f"Record {i} not migrated: {product}")
@@ -115,24 +122,29 @@ Original error: {e}
         os.remove(db_file.name)
         info = await handle.workflow_handle.describe()
         if info.status == temporalio.client.WorkflowExecutionStatus.RUNNING:
-            print("\nCanceling workflow") 
+            print("\nCanceling workflow")
             await handle.workflow_handle.cancel()
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table.")
-    parser.add_argument("--num_items", type=int, default=2000, help="The number of items to populate the table with and process.")
-    parser.add_argument(
-        "--pages_per_run", 
-        type=int, 
-        help="The number of items to process in run of the BatchOrchestrator workflow.  By default, it's as many pages until Temporal "\
-         "suggests to start a new run.")
-    parser.add_argument(
-        "--job_name",
-        type=str,
-        help="Workflow will be called inflate_product_prices-{job_name}", 
-        default=None
+    parser = argparse.ArgumentParser(
+        description="Sample for using BatchOrchestrator to run a batch migration on an entire sqlite table."
     )
-    parser.usage = "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 2000> "\
+    parser.add_argument(
+        "--num_items", type=int, default=2000, help="The number of items to populate the table with and process."
+    )
+    parser.add_argument(
+        "--pages_per_run",
+        type=int,
+        help="The number of items to process in run of the BatchOrchestrator workflow.  By default, it's as many pages until Temporal "
+        "suggests to start a new run.",
+    )
+    parser.add_argument(
+        "--job_name", type=str, help="Workflow will be called inflate_product_prices-{job_name}", default=None
+    )
+    parser.usage = (
+        "poetry run python samples/perform_sql_batch_migration.py --num_items <N, default 2000> "
         "--pages_per_run <N, default unspecified> --job_name <name, default UUID>"
+    )
     args = parser.parse_args()
     asyncio.run(main(args.num_items, args.pages_per_run, args.job_name))
