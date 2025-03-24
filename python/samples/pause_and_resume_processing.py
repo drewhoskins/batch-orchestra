@@ -9,16 +9,23 @@ try:
     from tempfile import NamedTemporaryFile
 
     import temporalio.service
-    from batch_orchestrator import BatchOrchestratorInput
-    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-    from lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
-    from lib.product_db import ProductDB
     from temporalio.client import Client
+
+    # Add ../ to the path for PIP, so we can use absolute imports in the samples.
+    sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
+    from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
+    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+    from samples.lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
+    from samples.lib.product_db import ProductDB
 except ModuleNotFoundError as e:
+    import traceback
     print(f"""
-This script requires poetry.  `poetry run python samples/pause_and_resume_processing.py`.
-But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.
-Original error: {e}
+Failed to import modules.
+If you're using poetry, run `poetry run python samples/pause_and_resume_processing.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
         """)
     sys.exit(1)
 

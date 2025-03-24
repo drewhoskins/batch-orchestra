@@ -6,8 +6,9 @@ from asyncio import sleep
 from dataclasses import asdict, dataclass
 from typing import Optional
 
-from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
-from lib.product_db import ProductDB
+from batch_orchestra.batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
+
+from .product_db import ProductDB
 
 
 @dataclass

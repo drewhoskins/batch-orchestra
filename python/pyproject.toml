@@ -6,7 +6,7 @@ authors = ["Drew Hoskins"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    { include = "**/*.py", from = "./batch_orchestra/"  }
+    { include = "batch_orchestra"  }
 ]
 
 [tool.poetry.dependencies]

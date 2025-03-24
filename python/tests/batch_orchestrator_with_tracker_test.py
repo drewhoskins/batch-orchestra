@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from batch_orchestrator_client import BatchOrchestratorClient
+from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient
 
 try:
     import json
@@ -11,20 +11,23 @@ try:
     from dataclasses import asdict, dataclass
 
     import pytest
-    from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
-    from batch_processor import BatchProcessorContext, PageProcessor, page_processor
-    from batch_tracker import BatchTrackerContext, batch_tracker, track_batch_progress
     from temporalio.client import Client, WorkflowHandle
     from temporalio.common import RetryPolicy
     from temporalio.worker import Worker
-except ModuleNotFoundError as e:
-    print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
-    print(
-        "But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry."
-    )
-    print(f"Original error: {e}")
-    sys.exit(1)
 
+    from batch_orchestra.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
+    from batch_orchestra.batch_processor import BatchProcessorContext, PageProcessor, page_processor
+    from batch_orchestra.batch_tracker import BatchTrackerContext, batch_tracker, track_batch_progress
+except ModuleNotFoundError:
+    import traceback
+    print(f"""
+Failed to import modules.
+If you're using poetry, run `poetry run pytest ./tests/batch_orchestrator_with_tracker_test.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
+        """)
+    sys.exit(1)
 
 def default_cursor():
     return MyCursor(0).to_json()

@@ -12,20 +12,24 @@ try:
     from typing import Optional
 
     import pytest
-    from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
-    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-    from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
     from temporalio.client import Client, WorkflowContinuedAsNewError, WorkflowFailureError, WorkflowHandle
     from temporalio.common import RetryPolicy
     from temporalio.exceptions import ApplicationError, TimeoutError
     from temporalio.service import RPCError
     from temporalio.worker import Worker
-except ModuleNotFoundError as e:
-    print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
-    print(
-        "But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry."
-    )
-    print(f"Original error: {e}")
+
+    from batch_orchestra.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
+    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+    from batch_orchestra.batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
+except ModuleNotFoundError:
+    import traceback
+    print(f"""
+Failed to import modules.
+If you're using poetry, run `poetry run pytest tests/batch_orchestrator_test.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
+        """)
     sys.exit(1)
 
 
@@ -747,9 +751,9 @@ async def test_logging(client: Client):
 
     async with batch_worker(client, task_queue_name):
         log_capture = MyHandler()
-        workflow_logger = logging.getLogger("batch_orchestrator")
+        workflow_logger = logging.getLogger('batch_orchestra.batch_orchestrator')
         workflow_logger.addHandler(log_capture)
-        activity_logger = logging.getLogger("batch_processor")
+        activity_logger = logging.getLogger('batch_orchestra.batch_processor')
         activity_logger.addHandler(log_capture)
 
         input = BatchOrchestratorInput(

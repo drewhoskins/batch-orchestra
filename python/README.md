@@ -53,6 +53,12 @@ If you want to run tests and samples:
 
     pip install -r requirements-dev.txt
 
+Then use pytest to run the tests:
+
+    pytest tests/
+
+You may also run the samples, which are currently the best place to get an idea of how to implement.  See the [samples README](./samples/README.md)
+
 # Page processors
 
 The main thing you implement is a page processor annotated with `@page_processor`.

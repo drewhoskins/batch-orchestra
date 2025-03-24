@@ -10,18 +10,27 @@ try:
     import pytest
     import temporalio.common
     import temporalio.exceptions
-    from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor, process_page
-    from batch_worker import BatchWorkerClient
     from temporalio.client import Client, WorkflowHandle
     from temporalio.testing import ActivityEnvironment
-except ModuleNotFoundError as e:
-    print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
-    print(
-        "But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry."
-    )
-    print(f"Original error: {e}")
-    sys.exit(1)
 
+    from batch_orchestra.batch_processor import (
+        BatchPage,
+        BatchProcessorContext,
+        PageProcessor,
+        page_processor,
+        process_page,
+    )
+    from batch_orchestra.batch_worker import BatchWorkerClient
+except ModuleNotFoundError:
+    import traceback
+    print(f"""
+Failed to import modules.
+If you're using poetry, run `poetry run pytest ./tests/batch_processor_test.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
+        """)
+    sys.exit(1)
 
 async def run_page_processor(
     page_processor_name: Type,

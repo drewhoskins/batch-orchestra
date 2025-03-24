@@ -2,8 +2,9 @@ from datetime import timedelta
 from typing import Any, Mapping, Optional
 
 import temporalio.client
-from batch_orchestrator import BatchOrchestrator
-from batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
+
+from .batch_orchestrator import BatchOrchestrator
+from .batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
 
 
 # Use this to track and manipulate your batch job as it runs.  It's a thin wrapper around the workflow handle.
