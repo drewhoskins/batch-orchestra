@@ -7,7 +7,6 @@ from dataclasses import asdict, dataclass
 from typing import Optional
 
 from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
-
 from lib.product_db import ProductDB
 
 
