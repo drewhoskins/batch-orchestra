@@ -23,11 +23,14 @@ try:
     from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
     from samples.lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
     from samples.lib.product_db import ProductDB
-except ModuleNotFoundError as e:
+except ModuleNotFoundError:
+    import traceback
     print(f"""
-This script requires poetry.  `poetry run python samples/perform_sql_batch_migration.py`.
-But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.
-Original error: {e}
+Failed to import modules.
+If you're using poetry, run `poetry run python samples/perform_sql_batch_migration.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
         """)
     sys.exit(1)
 

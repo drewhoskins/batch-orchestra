@@ -17,11 +17,14 @@ try:
     import samples.lib.inflate_product_prices_page_processor  # noqa: F401
     from batch_orchestra.batch_orchestrator import BatchOrchestrator, process_page
     from batch_orchestra.batch_worker import BatchWorkerClient
-except ModuleNotFoundError as e:
+except ModuleNotFoundError:
+    import traceback
     print(f"""
-        This script requires poetry.  `poetry run python samples/run_workers.py`.
-        But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.
-        Original error: {e}
+Failed to import modules.
+If you're using poetry, run `poetry run python samples/run_workers.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
     """)
     sys.exit(1)
 

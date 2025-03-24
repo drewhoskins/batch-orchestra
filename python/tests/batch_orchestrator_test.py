@@ -21,12 +21,15 @@ try:
     from batch_orchestra.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
     from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
     from batch_orchestra.batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
-except ModuleNotFoundError as e:
-    print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
-    print(
-        "But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry."
-    )
-    print(f"Original error: {e}")
+except ModuleNotFoundError:
+    import traceback
+    print(f"""
+Failed to import modules.
+If you're using poetry, run `poetry run pytest tests/batch_orchestrator_test.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
+        """)
     sys.exit(1)
 
 
