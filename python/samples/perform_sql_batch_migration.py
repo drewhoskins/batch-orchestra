@@ -4,27 +4,23 @@ from typing import Any, Optional
 
 try:
     import asyncio
-    from tempfile import NamedTemporaryFile
-    import uuid
     import os
     import sys
+    import uuid
+    from tempfile import NamedTemporaryFile
 
     # Add ../ to the path for PIP, so we can use absolute imports in the samples.
     sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
     import argparse
-    import asyncio
     import os
-    import uuid
-    from tempfile import NamedTemporaryFile
 
     import temporalio.service
 
-    from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
     from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
-    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient,  BatchOrchestratorHandle
-
-    from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
+    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+    from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
+    from samples.lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
     from samples.lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""

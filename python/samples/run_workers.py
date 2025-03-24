@@ -3,8 +3,8 @@ try:
     import asyncio
     import logging
     import multiprocessing
-    import sys
     import os
+    import sys
 
     # Add ../ to the path for PIP, so we can use absolute imports in the samples.
     sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
@@ -14,12 +14,11 @@ try:
     from temporalio.client import Client
     from temporalio.worker import Worker
 
-    from batch_orchestra.batch_orchestrator import BatchOrchestrator, process_page
-    from batch_orchestra.batch_worker import BatchWorkerClient
-
     # Import our registry of page processors which are registered with @page_processor.
     # Without importing this, they will not be registered.
     import samples.lib.inflate_product_prices_page_processor  # noqa: F401
+    from batch_orchestra.batch_orchestrator import BatchOrchestrator, process_page
+    from batch_orchestra.batch_worker import BatchWorkerClient
 except ModuleNotFoundError as e:
     print(f"""
         This script requires poetry.  `poetry run python samples/run_workers.py`.

@@ -8,12 +8,16 @@ try:
     from unittest.mock import patch
 
     import pytest
-
-    from temporalio.client import WorkflowHandle, Client
+    from temporalio.client import Client, WorkflowHandle
     from temporalio.testing import ActivityEnvironment
 
     from batch_orchestra.batch_orchestrator_io import BatchOrchestratorProgress
-    from batch_orchestra.batch_tracker import batch_tracker, track_batch_progress, BatchTrackerContext, BatchTrackerKeepPolling
+    from batch_orchestra.batch_tracker import (
+        BatchTrackerContext,
+        BatchTrackerKeepPolling,
+        batch_tracker,
+        track_batch_progress,
+    )
     from batch_orchestra.batch_worker import BatchWorkerClient
 
 except ModuleNotFoundError as e:

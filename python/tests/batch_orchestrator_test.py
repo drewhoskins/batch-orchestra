@@ -11,16 +11,15 @@ try:
     from datetime import datetime, timedelta
     from typing import Optional
 
+    from temporalio.client import Client, WorkflowContinuedAsNewError, WorkflowFailureError, WorkflowHandle
     from temporalio.common import RetryPolicy
-    from temporalio.client import Client, WorkflowHandle, WorkflowFailureError, WorkflowContinuedAsNewError
-    from temporalio.worker import Worker
     from temporalio.exceptions import ApplicationError, TimeoutError
     from temporalio.service import RPCError
+    from temporalio.worker import Worker
 
-    from batch_orchestra.batch_processor import BatchPage
     from batch_orchestra.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
     from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-    from batch_orchestra.batch_processor import BatchProcessorContext, page_processor, PageProcessor
+    from batch_orchestra.batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(

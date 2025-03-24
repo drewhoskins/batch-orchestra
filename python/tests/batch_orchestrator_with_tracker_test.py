@@ -11,15 +11,12 @@ try:
     from dataclasses import asdict, dataclass
 
     import pytest
-    import uuid    
-    
     from temporalio.client import Client, WorkflowHandle
-    from temporalio.worker import Worker
     from temporalio.common import RetryPolicy
+    from temporalio.worker import Worker
 
-
-    from batch_orchestra.batch_processor import BatchProcessorContext, page_processor, PageProcessor
     from batch_orchestra.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
+    from batch_orchestra.batch_processor import BatchProcessorContext, PageProcessor, page_processor
     from batch_orchestra.batch_tracker import BatchTrackerContext, batch_tracker, track_batch_progress
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")

@@ -15,8 +15,7 @@ try:
 
     from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
     from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-
-    from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
+    from samples.lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
     from samples.lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""

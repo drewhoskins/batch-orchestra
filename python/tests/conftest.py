@@ -1,19 +1,20 @@
 import asyncio
 import multiprocessing
-import sys
 import os
+import sys
 
 # Add ../ to the path for PIP, so we can use absolute imports in the tests.
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from typing import AsyncGenerator
-from batch_orchestra.batch_worker import BatchWorkerClient
 
 import pytest
 import pytest_asyncio
 from batch_worker import BatchWorkerClient
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
+
+from batch_orchestra.batch_worker import BatchWorkerClient
 
 #
 # This file was copied from https://github.com/temporalio/samples-python/blob/main/tests/conftest.py
