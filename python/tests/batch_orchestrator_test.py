@@ -11,15 +11,16 @@ try:
     from datetime import datetime, timedelta
     from typing import Optional
 
-    import pytest
-    from batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
-    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-    from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
-    from temporalio.client import Client, WorkflowContinuedAsNewError, WorkflowFailureError, WorkflowHandle
     from temporalio.common import RetryPolicy
+    from temporalio.client import Client, WorkflowHandle, WorkflowFailureError, WorkflowContinuedAsNewError
+    from temporalio.worker import Worker
     from temporalio.exceptions import ApplicationError, TimeoutError
     from temporalio.service import RPCError
-    from temporalio.worker import Worker
+
+    from batch_orchestra.batch_processor import BatchPage
+    from batch_orchestra.batch_orchestrator import BatchOrchestrator, BatchOrchestratorInput, process_page
+    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+    from batch_orchestra.batch_processor import BatchProcessorContext, page_processor, PageProcessor
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(
@@ -747,9 +748,9 @@ async def test_logging(client: Client):
 
     async with batch_worker(client, task_queue_name):
         log_capture = MyHandler()
-        workflow_logger = logging.getLogger("batch_orchestrator")
+        workflow_logger = logging.getLogger('batch_orchestra.batch_orchestrator')
         workflow_logger.addHandler(log_capture)
-        activity_logger = logging.getLogger("batch_processor")
+        activity_logger = logging.getLogger('batch_orchestra.batch_processor')
         activity_logger.addHandler(log_capture)
 
         input = BatchOrchestratorInput(

@@ -2,6 +2,7 @@ import sys
 
 try:
     import argparse
+    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
     import asyncio
 
     from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle

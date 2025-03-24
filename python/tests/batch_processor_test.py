@@ -10,10 +10,9 @@ try:
     import pytest
     import temporalio.common
     import temporalio.exceptions
-    from batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor, process_page
-    from batch_worker import BatchWorkerClient
-    from temporalio.client import Client, WorkflowHandle
-    from temporalio.testing import ActivityEnvironment
+
+    from batch_orchestra.batch_worker import BatchWorkerClient
+    from batch_orchestra.batch_processor import BatchProcessorContext, BatchPage, page_processor, process_page, PageProcessor
 except ModuleNotFoundError as e:
     print("This script requires poetry.  Try `poetry run pytest ./tests/batch_orchestrator_test.py`.")
     print(

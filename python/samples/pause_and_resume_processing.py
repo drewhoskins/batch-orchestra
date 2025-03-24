@@ -9,11 +9,15 @@ try:
     from tempfile import NamedTemporaryFile
 
     import temporalio.service
-    from batch_orchestrator import BatchOrchestratorInput
-    from batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
-    from lib.inflate_product_prices_page_processor import ConfigArgs, InflateProductPrices
-    from lib.product_db import ProductDB
-    from temporalio.client import Client
+
+    # Add ../ to the path for PIP, so we can use absolute imports in the samples.
+    sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
+    from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
+    from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle
+
+    from samples.lib.inflate_product_prices_page_processor import InflateProductPrices, ConfigArgs
+    from samples.lib.product_db import ProductDB
 except ModuleNotFoundError as e:
     print(f"""
 This script requires poetry.  `poetry run python samples/pause_and_resume_processing.py`.

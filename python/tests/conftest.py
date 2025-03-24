@@ -1,7 +1,13 @@
 import asyncio
 import multiprocessing
 import sys
+import os
+
+# Add ../ to the path for PIP, so we can use absolute imports in the tests.
+sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
 from typing import AsyncGenerator
+from batch_orchestra.batch_worker import BatchWorkerClient
 
 import pytest
 import pytest_asyncio

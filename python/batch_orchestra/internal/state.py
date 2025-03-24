@@ -4,7 +4,7 @@ from asyncio import Future
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
-from batch_processor import BatchPage
+from batch_orchestra.batch_processor import BatchPage
 
 
 @dataclass(kw_only=True)
