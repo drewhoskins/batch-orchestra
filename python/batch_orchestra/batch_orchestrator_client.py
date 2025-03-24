@@ -1,8 +1,10 @@
 from datetime import timedelta
 from typing import Any, Mapping, Optional
+
+import temporalio.client
 from batch_orchestrator import BatchOrchestrator
 from batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
-import temporalio.client
+
 
 # Use this to track and manipulate your batch job as it runs.  It's a thin wrapper around the workflow handle.
 class BatchOrchestratorHandle:
@@ -20,7 +22,8 @@ class BatchOrchestratorHandle:
         # See temporalio.client.WorkflowHandle.result for docs on these parameters
         follow_runs: bool = True,
         rpc_metadata: Mapping[str, str] = {},
-        rpc_timeout: Optional[timedelta] = None) -> BatchOrchestratorProgress:
+        rpc_timeout: Optional[timedelta] = None,
+    ) -> BatchOrchestratorProgress:
         return await self._handle.result(follow_runs=follow_runs, rpc_metadata=rpc_metadata, rpc_timeout=rpc_timeout)
 
     # Finishes the currently executing page processors and then pauses before any more are launched.
@@ -32,7 +35,7 @@ class BatchOrchestratorHandle:
     async def resume(self) -> None:
         await self._handle.signal(BatchOrchestrator.restore_max_parallelism)
 
-    # Use this to pause the batch (by setting it to 0) or otherwise increase/decrease the number of 
+    # Use this to pause the batch (by setting it to 0) or otherwise increase/decrease the number of
     # @page_processors that can execute at once.
     # Also "pushes" the old parallelism onto a stack so that you can restore_max_parallelism it later.
     async def set_max_parallelism(self, max_parallelism: int) -> None:
@@ -47,10 +50,11 @@ class BatchOrchestratorHandle:
     def workflow_handle(self) -> temporalio.client.WorkflowHandle[Any, BatchOrchestratorProgress]:
         return self._handle
 
+
 class BatchOrchestratorClient:
     def __init__(self, temporal_client: temporalio.client.Client):
         self._temporal_client = temporal_client
-    
+
     async def start(
         self,
         input: BatchOrchestratorInput,
@@ -60,19 +64,15 @@ class BatchOrchestratorClient:
         # See https://docs.temporal.io/workers#task-queue
         task_queue: str,
         # See temporalio.client.Client.start_workflow for advanced options.
-        **kwargs
+        **kwargs,
     ) -> BatchOrchestratorHandle:
         kwargs.update({"task_queue": task_queue, "id": id})
-        handle = await self._temporal_client.start_workflow(
-            BatchOrchestrator.run,
-            args=[input, None],
-            **kwargs
-        )
+        handle = await self._temporal_client.start_workflow(BatchOrchestrator.run, args=[input, None], **kwargs)
         return BatchOrchestratorHandle(handle)
-    
+
     # Use to get access to a running or completed batch job with just the temporal workflow ID.
     def get_handle(
-        self,        
+        self,
         workflow_id: str,
         *,
         run_id: Optional[str] = None,
@@ -80,7 +80,9 @@ class BatchOrchestratorClient:
     ) -> BatchOrchestratorHandle:
         return BatchOrchestratorHandle(
             self._temporal_client.get_workflow_handle(
-                workflow_id, 
+                workflow_id,
                 run_id=run_id,
                 first_execution_run_id=first_execution_run_id,
-                result_type=BatchOrchestratorProgress))
+                result_type=BatchOrchestratorProgress,
+            )
+        )
