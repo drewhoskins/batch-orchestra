@@ -10,6 +10,8 @@ try:
     import pytest
     import temporalio.common
     import temporalio.exceptions
+    from temporalio.client import Client, WorkflowHandle
+    from temporalio.testing import ActivityEnvironment
 
     from batch_orchestra.batch_processor import (
         BatchPage,

@@ -9,6 +9,7 @@ try:
     from tempfile import NamedTemporaryFile
 
     import temporalio.service
+    from temporalio.client import Client
 
     # Add ../ to the path for PIP, so we can use absolute imports in the samples.
     sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))

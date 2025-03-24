@@ -16,6 +16,7 @@ try:
     import os
 
     import temporalio.service
+    from temporalio.client import Client
 
     from batch_orchestra.batch_orchestrator import BatchOrchestratorInput
     from batch_orchestra.batch_orchestrator_client import BatchOrchestratorClient, BatchOrchestratorHandle

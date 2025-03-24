@@ -10,7 +10,6 @@ from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from batch_worker import BatchWorkerClient
 from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
 

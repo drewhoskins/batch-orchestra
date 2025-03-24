@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 
-from batch_worker import BatchWorkerContext
 from temporalio import activity
 from temporalio.common import RetryPolicy
 

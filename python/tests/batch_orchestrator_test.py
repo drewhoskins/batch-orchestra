@@ -11,6 +11,7 @@ try:
     from datetime import datetime, timedelta
     from typing import Optional
 
+    import pytest
     from temporalio.client import Client, WorkflowContinuedAsNewError, WorkflowFailureError, WorkflowHandle
     from temporalio.common import RetryPolicy
     from temporalio.exceptions import ApplicationError, TimeoutError

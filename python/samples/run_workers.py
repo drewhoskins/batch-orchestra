@@ -9,8 +9,6 @@ try:
     # Add ../ to the path for PIP, so we can use absolute imports in the samples.
     sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
-    from batch_orchestrator import BatchOrchestrator, process_page
-    from batch_worker import BatchWorkerClient
     from temporalio.client import Client
     from temporalio.worker import Worker
 
