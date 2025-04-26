@@ -2,7 +2,13 @@
 
 First, set up [Temporal prerequisites](../README.md#quick-start)
 
-You'll also need python (I've tested with 3.10) and [poetry](https://python-poetry.org/).
+You'll also need python (I've tested with 3.10).
+
+You can use poetry (easiest) or pip.
+
+## Instructions if you use poetry
+
+[poetry](https://python-poetry.org/) is supported.
 
 If you don't already have poetry:
 
@@ -27,6 +33,29 @@ Make sure temporal-server is running on localhost:7233 (the default)
 Then use pytest to run the tests:
 
     poetry run pytest tests/
+
+You may also run the samples, which are currently the best place to get an idea of how to implement.  See the [samples README](./samples/README.md)
+
+## Instructions if you use pip
+
+Run the following from the python directory:
+
+Create a virtual environment for isolation
+
+    python -m venv my_batch_orchestra_env
+    source my_batch_orchestra_env/bin/activate
+
+Install production dependencies:
+
+    pip install -e .
+
+If you want to run tests and samples:
+
+    pip install -r requirements-dev.txt
+
+Then use pytest to run the tests:
+
+    pytest tests/
 
 You may also run the samples, which are currently the best place to get an idea of how to implement.  See the [samples README](./samples/README.md)
 
@@ -75,10 +104,19 @@ Copy your payload in.
 Some things to keep an eye on/ that I want to tackle before the initial release 
 
 * Should pass cursors as raw rather than str?
-* Harmonize with python-sdk and python best practices.  (What did I miss?)
+* Harmonize with python best practices.  (What did I miss?)
 
+## Linting / formatting
+
+We use [ruff](https://github.com/astral-sh/ruff) for linting and formatting. It is not enforced in CI,
+but you can run it locally like so:
+
+    poetry run ruff format
+    poetry run ruff check
 
 # Roadmap
 * Error handling
   * Call a handler when there are initial failures, to be used for notifications and such.
   * Allow users to designate individual records as failures and proceed with the rest of their page.
+* Reducer
+  * In MapReduce terms, batch orchestra is currently a Map operation.  We want to add a Reduce step.

@@ -3,22 +3,28 @@ try:
     import asyncio
     import logging
     import multiprocessing
+    import os
     import sys
+
+    # Add ../ to the path for PIP, so we can use absolute imports in the samples.
+    sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
     from temporalio.client import Client
     from temporalio.worker import Worker
 
-    from batch_orchestrator import BatchOrchestrator, process_page
-    from batch_worker import BatchWorkerClient
-
     # Import our registry of page processors which are registered with @page_processor.
     # Without importing this, they will not be registered.
     import samples.lib.inflate_product_prices_page_processor  # noqa: F401
-except ModuleNotFoundError as e:
+    from batch_orchestra.batch_orchestrator import BatchOrchestrator, process_page
+    from batch_orchestra.batch_worker import BatchWorkerClient
+except ModuleNotFoundError:
+    import traceback
     print(f"""
-        This script requires poetry.  `poetry run python samples/run_workers.py`.
-        But if you haven't, first see Python Quick Start in python/README.md for instructions on installing and setting up poetry.
-        Original error: {e}
+Failed to import modules.
+If you're using poetry, run `poetry run python samples/run_workers.py`.
+To set up poetry, or alternatively to set up a virtual environment, first see Python Quick Start in python/README.md.
+Original error:
+{traceback.format_exc()}
     """)
     sys.exit(1)
 
@@ -59,8 +65,10 @@ async def worker_async():
         await interrupt_event.wait()
         logging.info("Shutting down")
 
+
 def worker():
     asyncio.run(worker_async())
+
 
 def main(num_processes: int):
     processes = []
@@ -71,6 +79,7 @@ def main(num_processes: int):
         processes.append(p)
 
     return processes
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

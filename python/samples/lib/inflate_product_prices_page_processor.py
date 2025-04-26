@@ -1,14 +1,15 @@
 from __future__ import annotations
-from asyncio import sleep
-from dataclasses import asdict, dataclass
+
 import json
 import sys
-
+from asyncio import sleep
+from dataclasses import asdict, dataclass
 from typing import Optional
 
+from batch_orchestra.batch_processor import BatchPage, BatchProcessorContext, PageProcessor, page_processor
 
-from batch_processor import BatchProcessorContext, BatchPage, PageProcessor, page_processor
-from samples.lib.product_db import ProductDB
+from .product_db import ProductDB
+
 
 @dataclass
 class ConfigArgs:
@@ -16,7 +17,7 @@ class ConfigArgs:
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
-    
+
     @staticmethod
     def from_json(json_str) -> ConfigArgs:
         return ConfigArgs(**json.loads(json_str))
@@ -28,7 +29,7 @@ class ProductDBCursor:
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
-    
+
     @staticmethod
     def from_json(json_str) -> ProductDBCursor:
         return ProductDBCursor(**json.loads(json_str))
@@ -38,7 +39,6 @@ class ProductDBCursor:
 # I decided to leave this kinda flaky to show off the resilience of the BatchOrchestrator.
 @page_processor
 class InflateProductPrices(PageProcessor):
-
     async def run(self, context: BatchProcessorContext):
         page = context.page
         if page.cursor_str == "":
@@ -48,14 +48,12 @@ class InflateProductPrices(PageProcessor):
 
         args = ConfigArgs.from_json(context.args_str)
         db_connection = ProductDB.get_db_connection(args.db_file)
-        
+
         products = ProductDB.fetch_page(db_connection, cursor.key, page.size)
 
         if len(products) == page.size:
             # We got a full set of results, so there are likely more pages to process
-            await context.enqueue_next_page(
-                BatchPage(ProductDBCursor(products[-1].key).to_json(), page.size)
-            )
+            await context.enqueue_next_page(BatchPage(ProductDBCursor(products[-1].key).to_json(), page.size))
 
         num_processed = 0
         for product in products:
@@ -69,7 +67,7 @@ class InflateProductPrices(PageProcessor):
         next_page_message = f"Next page cursor = {products[-1].key}" if products else "And that's all, folks!"
         context.logger.info(f"Finished processing {num_processed} rows of page {page}. {next_page_message}")
         sys.stdout.flush()
-        
+
     @property
     def retry_mode(self) -> PageProcessor.RetryMode:
         return PageProcessor.RetryMode.EXECUTE_AT_LEAST_ONCE
