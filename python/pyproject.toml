@@ -16,7 +16,12 @@ packages = [
 python = "^3.10"
 temporalio = "^1.5.0"
 inflect = "^7.0.0"
-streamlit = "^1.42.2"
+
+[tool.poetry.group.samples]
+optional = true
+
+[tool.poetry.group.samples.dependencies]
+streamlit = "^1.42.0"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
