@@ -22,8 +22,6 @@ DEFAULT_NUM_PAGES = 200
 PAGES_PER_RUN = None
 
 
-# To run: "poetry run streamlit run samples/progress_viewer.py"
-
 async def configure_temporal_client() -> Client | None:
     try:
         temporal_client = await Client.connect(TEMPORAL_HOST)
@@ -107,7 +105,7 @@ async def run_batch_checker(handle: BatchOrchestratorHandle, num_items, page_siz
 
 
 async def app():
-    st.title("Batch Orchestrator Progress Viewer")
+    st.title("DB Migration Progress Viewer")
     client = await configure_temporal_client()
 
     if client:
