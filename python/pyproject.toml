@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "batch-orchestra"
-version = "0.2.0"
+version = "0.2.1"
 description = "An easy-to-use library for reliably and scalably performing many like operations, orchestrated using [Temporal](https://temporal.io) workflows and activities."
 authors = ["Drew Hoskins"]
 license = "MIT"
@@ -14,7 +14,8 @@ packages = [
 # Known 3.10 dependencies:
 # - I believe that the kw_only annotation on @dataclass is 3.10.  That can probably be easily worked around.
 python = "^3.10"
-temporalio = "^1.5.0"
+# 1.8 needed for @workflow.init annotation
+temporalio = "^1.8.0"
 inflect = "^7.5.0"
 
 [tool.pytest.ini_options]

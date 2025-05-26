@@ -51,9 +51,6 @@ class BatchOrchestrator:
     async def run(
         self, input: BatchOrchestratorInput, state: Optional[ContinueAsNewState]
     ) -> BatchOrchestratorProgress:
-        print(f"Running batch orchestrator with input: {input} and state: {state}.")
-        self._run_init(input=input, state=state)
-
         self.start_progress_tracker()
 
         self.logger.info("Starting batch.")
@@ -465,7 +462,8 @@ class BatchOrchestrator:
             else:
                 return page_processor.initial_retry_policy
 
-    def _run_init(self, *, input: BatchOrchestratorInput, state: Optional[ContinueAsNewState]) -> None:
+    @workflow.init
+    def __init__(self, input: BatchOrchestratorInput, state: Optional[ContinueAsNewState]) -> None:
         self.input = input
         self.logger = BatchOrchestrator.LoggerAdapter(input)
         self.page_queue = BatchOrchestrator.PageQueue(input=input, logger=self.logger, state=state)
