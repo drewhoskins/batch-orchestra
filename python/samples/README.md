@@ -12,6 +12,11 @@ Start a workflow to run on those workers, for example with
 
     poetry run python samples/perform_sql_batch_migration.py
 
+An example of visualising the DB migration project using a Streamlit app, created for the Temporal Replay Hackathon 2025 can be run using:
+
+    poetry install --with samples
+    poetry run streamlit run samples/progress_viewer.py
+
 ## Instructions if you use pip
 
 Create an env as in [the Python README](../README.md) and activate it in two terminals.
