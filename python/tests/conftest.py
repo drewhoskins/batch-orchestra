@@ -53,8 +53,9 @@ def event_loop():
 async def env(request) -> AsyncGenerator[WorkflowEnvironment, None]:
     env_type = request.config.getoption("--workflow-environment")
     if env_type == "local":
-        env = await WorkflowEnvironment.start_local()
-        BatchWorkerClient.register(env.client)
+        # TODO
+        raise NotImplementedError("Something's not working yet in this mode.")
+    #        env = await WorkflowEnvironment.start_local()
     elif env_type == "time-skipping":
         raise NotImplementedError("Time-skipping mode is untested.")
     #        env = await WorkflowEnvironment.start_time_skipping()
