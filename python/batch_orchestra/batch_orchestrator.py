@@ -3,17 +3,17 @@ from __future__ import annotations
 import logging
 from asyncio import Future
 from datetime import timedelta
-from typing import Dict, Optional, Set, Type
+from typing import Any, Dict, List, Optional, Set, Type
 
 import inflect
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ApplicationError, CancelledError
 
-from .batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress
+from .batch_orchestrator_io import BatchOrchestratorInput, BatchOrchestratorProgress, StageProgress
 from .batch_processor import BatchPage, PageProcessor, get_page_processor, process_page
 from .batch_tracker import track_batch_progress
-from .internal.state import ContinueAsNewState, EnqueuedPage, PageTrackerData
+from .internal.state import ContinueAsNewState, EnqueuedPage, PageTrackerData, PipelineData, StageState
 
 #
 # batch_orchestrator library
@@ -27,6 +27,14 @@ from .internal.state import ContinueAsNewState, EnqueuedPage, PageTrackerData
 #     See the [Temporal Python SDK docs](https://docs.temporal.io/dev-guide/python) for more details.
 #   * Your main work will be to implement a @page_processor, so see     batch_processor.py for more details.
 #   * All configuration and customization is passed in with BatchOrchestratorInput.
+#
+# Multi-stage pipelines:
+#   * A batch can be a pipeline of stages: input.page_processor is stage 0 and input.subsequent_stages are the rest.
+#   * Each page flows through every stage in order, and the value a stage returns is handed to the next stage as
+#     context.previous_stage_result.
+#   * Each stage has its own queue and its own parallelism limit, so a slow stage doesn't consume the budget of a
+#     fast one, and stages of different pages run concurrently (page 3 can be in stage 0 while page 1 is in stage 2).
+#   * Only stage 0 paginates (calls context.enqueue_next_page()).
 
 
 # Sandbox is off so we can import the user's @page_processor classes.  We might could make this more selective
@@ -40,9 +48,12 @@ class BatchOrchestrator:
     # handle: WorkflowHandle[Any, BatchOrchestratorProgress] = await BatchOrchestratorClient(temporal_client).start(
     #   BatchOrchestratorInput(
     #     batch_id="my_batch_id",
-    #     page_processor_name=my_page_processor.__name__,
-    #     max_parallelism=5,
-    #     page_size=page_size),
+    #     page_processor=BatchOrchestratorInput.PageProcessorContext(
+    #       name=my_page_processor.__name__,
+    #       page_size=page_size),
+    #     # Optional: keep going through more activities per page.
+    #     subsequent_stages=[BatchOrchestratorInput.StageContext(name=my_second_stage.__name__)],
+    #     max_parallelism=5),
     #   id=f"my_workflow_id-{str(uuid.uuid4())}",
     #   task_queue="my-task-queue")
     # Now wait for the workflow to finish.  Or see BatchOrchestratorClient for all your other options.
@@ -53,24 +64,24 @@ class BatchOrchestrator:
     ) -> BatchOrchestratorProgress:
         self.start_progress_tracker()
 
-        self.logger.info("Starting batch.")
+        self.logger.info(f"Starting batch.  The pipeline has {len(self.pipeline.stages)} stage(s).")
         if not state:
             first_page = BatchPage(input.page_processor.first_cursor_str, input.page_processor.page_size)
-            self.page_queue.enqueue_page(first_page, 0)
-        await self.page_queue.run()
+            self.pipeline.first_stage.enqueue_page(first_page, 0)
+        await self.pipeline.run()
 
-        if self.page_processor.use_extended_retries and self.page_queue.page_tracker.stuck_page_nums:
+        if self.pipeline.has_stuck_pages:
             self.logger.info(
-                f"Moving to extended retries: {len(self.page_queue.page_tracker.stuck_page_nums)} pages are stuck, "
-                + f"while {self.page_queue.page_tracker.num_completed_pages} processed successfully."
+                f"Moving to extended retries: {self.pipeline.num_stuck_pages} pages are stuck, "
+                + f"while {self.pipeline.num_completed_pages} processed successfully."
             )
 
-            self.page_queue.re_enqueue_stuck_pages()
-            await self.page_queue.run()
+            self.pipeline.re_enqueue_stuck_pages()
+            await self.pipeline.run()
 
-        self.logger.info(f"BatchOrchestrator completed {self.page_queue.page_tracker.num_completed_pages} pages")
+        self.logger.info(f"BatchOrchestrator completed {self.pipeline.num_completed_pages} pages")
 
-        self.page_queue.page_tracker.on_finished()
+        self.pipeline.on_finished()
         await self.finalize_progress_tracker()
         return self.current_progress()
 
@@ -80,39 +91,37 @@ class BatchOrchestrator:
     # progress = await handle.query(BatchOrchestrator.current_progress)
     @workflow.query
     def current_progress(self) -> BatchOrchestratorProgress:
-        return BatchOrchestratorProgress(
-            num_completed_pages=self.page_queue.page_tracker.num_completed_pages,
-            max_parallelism_achieved=self.page_queue.page_tracker.max_parallelism_achieved,
-            num_processing_pages=self.page_queue.page_tracker.num_processing_pages,
-            num_stuck_pages=len(self.page_queue.page_tracker.stuck_page_nums),
-            num_failed_pages=len(self.page_queue.page_tracker.failed_page_nums),
-            is_finished=self.page_queue.page_tracker.is_finished,
-            _start_timestamp=self.start_time.timestamp(),
-        )
+        return self.pipeline.current_progress(self.start_time.timestamp())
 
     # Use this to pause the batch (by setting it to 0) or otherwise increase/decrease the number of
     # @page_processors that can execute at once.
     # Also "pushes" the old parallelism onto a stack so that you can restore_max_parallelism it later.
+    # By default this applies to every stage of the pipeline; pass stage_num to throttle just one of them.
     @workflow.signal
-    async def set_max_parallelism(self, max_parallelism: int) -> None:
-        self.logger.info(
-            f"Changing max_parallelism to {max_parallelism} from {self.page_queue.page_tracker.max_parallelism}."
-        )
-        self.page_queue.page_tracker.update_max_parallelism(max_parallelism)
+    async def set_max_parallelism(self, max_parallelism: int, stage_num: Optional[int] = None) -> None:
+        for stage in self.pipeline.stages_matching(stage_num):
+            self.logger.info(
+                f"Changing max_parallelism of {stage.describe()} to {max_parallelism} from {stage.max_parallelism}."
+            )
+            stage.page_tracker.update_max_parallelism(max_parallelism)
 
     # "pops" to the previous max_parallelism value, if there was one.
     @workflow.signal
-    async def restore_max_parallelism(self) -> None:
-        current_parallelism = self.page_queue.page_tracker.max_parallelism
-        new_parallelism = self.page_queue.page_tracker.restore_max_parallelism()
-        self.logger.info(f"Restoring max_parallelism to {new_parallelism} from {current_parallelism}.")
+    async def restore_max_parallelism(self, stage_num: Optional[int] = None) -> None:
+        for stage in self.pipeline.stages_matching(stage_num):
+            current_parallelism = stage.max_parallelism
+            new_parallelism = stage.page_tracker.restore_max_parallelism()
+            self.logger.info(
+                f"Restoring max_parallelism of {stage.describe()} to {new_parallelism} from {current_parallelism}."
+            )
 
     # Receives signals that new pages are ready to process and enqueues them.
     # Don't call this directly; call context.enqueue_next_page() from your @page_processor.
+    # Only the first stage paginates, so new pages always enter the pipeline at the front.
     @workflow.signal
     async def _signal_add_page(self, page: BatchPage, page_num: int) -> None:
         self.logger.info(f"Enqueuing {self.logger.describe_page(page_num, page)}.")
-        self.page_queue.enqueue_page(page, page_num)
+        self.pipeline.first_stage.enqueue_page(page, page_num)
 
     # Starts a user-specified background activity to track the progress of the batch.
     def start_progress_tracker(self) -> Optional[Future[None]]:
@@ -165,13 +174,154 @@ class BatchOrchestrator:
             ordinal = inflect.engine().ordinal(page_num + 1)  # type: ignore
             return f"the page with cursor {page.cursor_str}, the {ordinal} page"
 
-    class PageQueue:
-        # Indexes and counts for the pages we're managing
+    #
+    # A Pipeline owns one StageQueue per stage and pumps pages through them.
+    # Each StageQueue enforces its own max_parallelism, so the stages proceed independently; the Pipeline is just
+    # the loop that starts work wherever any stage has room for it, plus the continue-as-new bookkeeping.
+    #
+    class Pipeline:
+        def __init__(
+            self,
+            *,
+            input: BatchOrchestratorInput,
+            logger: BatchOrchestrator.LoggerAdapter,
+            state: Optional[ContinueAsNewState],
+        ) -> None:
+            self.input = input
+            self.logger = logger
+            self.data = state.pipeline_data if state else PipelineData()
+            self.stages: List[BatchOrchestrator.StageQueue] = [
+                BatchOrchestrator.StageQueue(
+                    stage_num=stage_num,
+                    stage=stage,
+                    input=input,
+                    logger=logger,
+                    pipeline=self,
+                    state=state.stages[stage_num] if state else None,
+                )
+                for stage_num, stage in enumerate(input.stages)
+            ]
+            # Wire each stage to its successor so completed pages can flow forward.
+            for stage, next_stage in zip(self.stages, self.stages[1:]):
+                stage.next_stage = next_stage
+
+        @property
+        def first_stage(self) -> BatchOrchestrator.StageQueue:
+            return self.stages[0]
+
+        @property
+        def last_stage(self) -> BatchOrchestrator.StageQueue:
+            return self.stages[-1]
+
+        def stages_matching(self, stage_num: Optional[int]) -> List[BatchOrchestrator.StageQueue]:
+            if stage_num is None:
+                return self.stages
+            return [self.stages[stage_num]]
+
+        #
+        # Seed the first stage with pending pages, then run this.
+        # It will run until every page has flowed through every stage (or failed, or is waiting to retry).
+        #
+        async def run(self) -> None:
+            while not self.is_quiesced():
+                # Wake up (or continue) when an activity signals us with more work, when one completes, or when
+                # some stage is ready to process a new page.
+                await workflow.wait_condition(lambda: self.is_ready_to_start_work() or self.is_quiesced())
+                # Give every stage a chance to launch work.  Later stages first, so that pages already deep in the
+                # pipeline drain out (and release downstream backpressure) before we admit more at the front.
+                for stage in reversed(self.stages):
+                    while stage.is_new_page_ready() and not self.should_continue_as_new():
+                        stage.start_page_processor_activity(stage.next_pending_page())
+            if self.has_pending_pages:
+                workflow.continue_as_new(
+                    args=[
+                        self.input,
+                        ContinueAsNewState(
+                            pipeline_data=self.data, stages=[stage.get_state() for stage in self.stages]
+                        ),
+                    ]
+                )
+
+        # True when there's nothing left to do--either the pipeline is drained, or we've stopped admitting work
+        # because we're about to continue as new and the last in-flight activities have settled.
+        def is_quiesced(self) -> bool:
+            if self.has_processing_pages:
+                return False
+            return not self.has_pending_pages or self.should_continue_as_new()
+
+        def is_ready_to_start_work(self) -> bool:
+            if self.should_continue_as_new():
+                return False
+            return any(stage.is_new_page_ready() for stage in self.stages)
+
+        def should_continue_as_new(self) -> bool:
+            if workflow.info().is_continue_as_new_suggested():
+                return True
+            if not self.input.pages_per_run:
+                return False
+            # Only the first stage admits new pages into the pipeline, so it's the one that counts.
+            return self.first_stage.page_tracker.num_pages_enqueued_in_this_run > self.input.pages_per_run
+
+        @property
+        def has_pending_pages(self) -> bool:
+            return any(stage.page_tracker.has_pending_pages for stage in self.stages)
+
+        @property
+        def has_processing_pages(self) -> bool:
+            return any(stage.page_tracker.has_processing_pages for stage in self.stages)
+
+        @property
+        def has_stuck_pages(self) -> bool:
+            return any(stage.page_tracker.stuck_page_nums for stage in self.stages)
+
+        @property
+        def num_stuck_pages(self) -> int:
+            return sum(len(stage.page_tracker.stuck_page_nums) for stage in self.stages)
+
+        @property
+        def num_processing_pages(self) -> int:
+            return sum(stage.page_tracker.num_processing_pages for stage in self.stages)
+
+        # Pages that made it out the far end of the pipeline.
+        @property
+        def num_completed_pages(self) -> int:
+            return self.last_stage.page_tracker.num_completed_pages
+
+        def re_enqueue_stuck_pages(self) -> None:
+            for stage in self.stages:
+                stage.re_enqueue_stuck_pages()
+
+        # Called by a StageQueue whenever it starts an activity, so we can report pipeline-wide concurrency.
+        def on_page_started(self) -> None:
+            self.data.max_parallelism_achieved = max(self.data.max_parallelism_achieved, self.num_processing_pages)
+
+        def on_finished(self) -> None:
+            for stage in self.stages:
+                stage.assert_drained()
+            self.data.is_finished = True
+
+        def current_progress(self, start_timestamp: float) -> BatchOrchestratorProgress:
+            return BatchOrchestratorProgress(
+                num_completed_pages=self.num_completed_pages,
+                max_parallelism_achieved=self.data.max_parallelism_achieved,
+                num_processing_pages=self.num_processing_pages,
+                num_stuck_pages=self.num_stuck_pages,
+                num_failed_pages=sum(len(stage.page_tracker.failed_page_nums) for stage in self.stages),
+                is_finished=self.data.is_finished,
+                _start_timestamp=start_timestamp,
+                stages=[stage.current_progress() for stage in self.stages],
+            )
+
+    #
+    # One stage of the pipeline: the queue of pages waiting for it, the pages it's currently processing, and the
+    # policy (parallelism, retries) it processes them with.
+    #
+    class StageQueue:
+        # Indexes and counts for the pages this stage is managing
         class PageTracker:
-            def __init__(self, data: PageTrackerData, *, pages_per_run: Optional[int]) -> None:
+            def __init__(self, data: PageTrackerData) -> None:
                 self.data: PageTrackerData = data
                 self._num_pages_enqueued_in_this_run = len(data.pending_page_nums)
-                self._pages_per_run = pages_per_run
 
             def update_max_parallelism(self, max_parallelism: int) -> None:
                 self.data.previous_max_parallelisms.append(self.data.max_parallelism)
@@ -186,22 +336,12 @@ class BatchOrchestrator:
             #
             # Status fields
             #
-            def work_is_complete(self) -> bool:
-                return (not self.has_pending_pages or self.should_continue_as_new()) and not self.has_processing_pages
-
-            def is_new_page_ready(self) -> bool:
-                return self.num_processing_pages < self.data.max_parallelism and self.has_pending_pages > 0
+            def has_capacity(self) -> bool:
+                return self.num_processing_pages < self.data.max_parallelism
 
             def get_next_page_num(self) -> int:
                 assert self.data.pending_page_nums
                 return self.data.pending_page_nums[0]
-
-            def should_continue_as_new(self) -> bool:
-                if workflow.info().is_continue_as_new_suggested():
-                    return True
-                if not self._pages_per_run:
-                    return False
-                return self._num_pages_enqueued_in_this_run > self._pages_per_run
 
             #
             # Count-based properties
@@ -209,6 +349,10 @@ class BatchOrchestrator:
             @property
             def num_pages_ever_enqueued(self) -> int:
                 return self.data.num_pages_ever_enqueued
+
+            @property
+            def num_pages_enqueued_in_this_run(self) -> int:
+                return self._num_pages_enqueued_in_this_run
 
             @property
             def num_completed_pages(self) -> int:
@@ -231,6 +375,10 @@ class BatchOrchestrator:
                 return bool(self.data.pending_page_nums)
 
             @property
+            def num_pending_pages(self) -> int:
+                return len(self.data.pending_page_nums)
+
+            @property
             def num_processing_pages(self) -> int:
                 return len(self.data.processing_page_nums)
 
@@ -241,10 +389,6 @@ class BatchOrchestrator:
             @property
             def max_parallelism_achieved(self) -> int:
                 return self.data.max_parallelism_achieved
-
-            @property
-            def is_finished(self) -> bool:
-                return self.data.is_finished
 
             #
             # Triggers to track changes
@@ -280,34 +424,48 @@ class BatchOrchestrator:
                 self.data.processing_page_nums.remove(page_num)
                 self.data.failed_page_nums.add(page_num)
 
-            def on_finished(self) -> None:
-                assert not self.data.processing_page_nums
-                assert not self.data.stuck_page_nums
-                assert not self.data.pending_page_nums
-                self.data.is_finished = True
-
         def __init__(
             self,
             *,
+            stage_num: int,
+            stage: BatchOrchestratorInput.StageContext,
             input: BatchOrchestratorInput,
             logger: Type["BatchOrchestrator.LoggerAdapter"],
-            state: Optional[ContinueAsNewState],
+            pipeline: BatchOrchestrator.Pipeline,
+            state: Optional[StageState],
         ) -> None:
+            self.stage_num = stage_num
+            self.stage = stage
             self.input = input
-            self.page_processor: PageProcessor = get_page_processor(input.page_processor.name)
+            self.pipeline = pipeline
+            self.page_processor: PageProcessor = get_page_processor(stage.name)
+            self.next_stage: Optional[BatchOrchestrator.StageQueue] = None
             if state:
                 page_tracker_data = state.page_tracker_data
-                # json serializesthe keys as strings.
+                # json serializes the keys as strings.
                 self.pages = {int(k): v for k, v in state.pages.items()}
             else:
-                page_tracker_data = PageTrackerData(max_parallelism=self.input.max_parallelism)
+                page_tracker_data = PageTrackerData(max_parallelism=input.max_parallelism_for(stage))
                 self.pages: Dict[int, EnqueuedPage] = {}
-            self.page_tracker = BatchOrchestrator.PageQueue.PageTracker(
-                page_tracker_data, pages_per_run=self.input.pages_per_run
-            )
+            self.page_tracker = BatchOrchestrator.StageQueue.PageTracker(page_tracker_data)
             self.logger = logger
 
-        # Receive new work from a page processor
+        def describe(self) -> str:
+            return f"stage {self.stage_num} ({self.stage.name})"
+
+        @property
+        def is_last_stage(self) -> bool:
+            return self.next_stage is None
+
+        @property
+        def max_parallelism(self) -> int:
+            return self.page_tracker.max_parallelism
+
+        def get_state(self) -> StageState:
+            return StageState(page_tracker_data=self.page_tracker.data, pages=self.pages)  # type: ignore[arg-type]
+
+        # Receive new work from the first stage's page processor.  Only the first stage paginates, so only it
+        # needs to defend against duplicate signals.
         def enqueue_page(self, page: BatchPage, page_num: int) -> None:
             if page_num < self.page_tracker.num_pages_ever_enqueued:
                 self.logger.warning(
@@ -336,12 +494,61 @@ class BatchOrchestrator:
                 )
                 return
 
-            self.pages[page_num] = EnqueuedPage(page=page, page_num=page_num)
-            self.page_tracker.on_page_enqueued(page_num)
+            self._enqueue(EnqueuedPage(page=page, page_num=page_num, stage_num=self.stage_num))
+
+        # Receive a page that just finished the previous stage, along with whatever that stage returned.
+        def accept_page_from_previous_stage(self, enqueued_page: EnqueuedPage) -> None:
+            assert enqueued_page.stage_num == self.stage_num
+            self.logger.info(
+                f"Passing {self.logger.describe_page(enqueued_page.page_num, enqueued_page.page)} to {self.describe()}."
+            )
+            self._enqueue(enqueued_page)
+
+        def _enqueue(self, enqueued_page: EnqueuedPage) -> None:
+            self.pages[enqueued_page.page_num] = enqueued_page
+            self.page_tracker.on_page_enqueued(enqueued_page.page_num)
 
         def re_enqueue_stuck_pages(self) -> None:
             for page_num in self.page_tracker.stuck_page_nums:
                 self.page_tracker.on_page_enqueued(page_num)
+
+        def next_pending_page(self) -> EnqueuedPage:
+            return self.pages[self.page_tracker.get_next_page_num()]
+
+        # This stage may start another page if it has parallelism budget left, has work waiting, and isn't about to
+        # dump the result onto a downstream stage that's already backed up.
+        def is_new_page_ready(self) -> bool:
+            return (
+                self.page_tracker.has_capacity()
+                and self.page_tracker.has_pending_pages
+                and not self._is_next_stage_backed_up()
+            )
+
+        def _is_next_stage_backed_up(self) -> bool:
+            if self.next_stage is None:
+                return False
+            limit = self.next_stage.stage.max_queued_pages
+            if limit is None:
+                return False
+            return self.next_stage.page_tracker.num_pending_pages >= limit
+
+        def assert_drained(self) -> None:
+            assert not self.page_tracker.has_processing_pages
+            assert not self.page_tracker.stuck_page_nums
+            assert not self.page_tracker.has_pending_pages
+
+        def current_progress(self) -> StageProgress:
+            return StageProgress(
+                stage_num=self.stage_num,
+                stage_name=self.stage.name,
+                num_pending_pages=self.page_tracker.num_pending_pages,
+                num_processing_pages=self.page_tracker.num_processing_pages,
+                num_completed_pages=self.page_tracker.num_completed_pages,
+                num_stuck_pages=len(self.page_tracker.stuck_page_nums),
+                num_failed_pages=len(self.page_tracker.failed_page_nums),
+                max_parallelism=self.max_parallelism,
+                max_parallelism_achieved=self.page_tracker.max_parallelism_achieved,
+            )
 
         def is_non_retryable(self, exception: BaseException) -> bool:
             if isinstance(exception, ApplicationError):
@@ -357,10 +564,15 @@ class BatchOrchestrator:
         def on_page_failing(self, page: BatchPage, page_num: int, exception: BaseException) -> None:
             # If the page told us about its successor, we need to tell the page processor not to re-signal when it
             # is processed within the extended retries phase.  This will avoid extra signals filling up the workflow history.
-            did_signal_next_page = (page_num + 1) in self.pages
-            if did_signal_next_page:
+            # Only the first stage paginates, so this is moot for the others.
+            if self.stage_num > 0:
+                did_signal_next_page = False
+                signaled_text = ""
+            elif (page_num + 1) in self.pages:
+                did_signal_next_page = True
                 signaled_text = "It signaled for the next page before it got stuck."
             else:
+                did_signal_next_page = False
                 signaled_text = (
                     "It did not signal with the next page before the failure and may be blocking further progress."
                 )
@@ -372,7 +584,7 @@ class BatchOrchestrator:
             )
             if should_extended_retry:
                 self.logger.info(
-                    f"Batch orchestrator got stuck trying {self.logger.describe_page(page_num, page)}. {signaled_text} Will retry during extended retries.",
+                    f"Batch orchestrator got stuck in {self.describe()} trying {self.logger.describe_page(page_num, page)}. {signaled_text} Will retry during extended retries.",
                     {"exception": exception},
                 )
                 self.page_tracker.on_page_got_stuck(page_num)
@@ -385,71 +597,63 @@ class BatchOrchestrator:
                     assert self.pages[page_num].is_stuck
                     explanation = "Will not retry because it hard failed within extended retries (perhaps due to a workflow timeout?)."
                 self.logger.error(
-                    f"BatchOrchestrator failed {self.logger.describe_page(page_num, page)}, permanently. {signaled_text} {explanation}",
+                    f"BatchOrchestrator failed {self.logger.describe_page(page_num, page)} in {self.describe()}, permanently. {signaled_text} {explanation}",
                     {"exception": exception},
                 )
                 self.page_tracker.on_page_failed(page_num)
 
             self.pages[page_num].set_processing_got_stuck(exception, did_signal_next_page)
 
-        def on_page_processed(self, future: Future[str], page_num: int, page: BatchPage) -> None:
+        def on_page_processed(self, future: Future[Any], page_num: int, page: BatchPage) -> None:
             exception = future.exception()
-            self.logger.info(f"On page processed {page_num} {page} {exception}")
             if exception is not None:
                 assert isinstance(exception, ActivityError)
                 exception = exception.__cause__
                 assert exception is not None
                 self.on_page_failing(page, page_num, exception)
-            else:
-                self.logger.info(f"Batch orchestrator completed {self.logger.describe_page(page_num, page)}.")
-                self.pages[page_num].set_processing_finished()
-                self.page_tracker.on_page_completed(page_num)
+                return
 
-        # Initiate processing the page and register a callback to record that it finished
+            self.logger.info(
+                f"Batch orchestrator completed {self.describe()} for {self.logger.describe_page(page_num, page)}."
+            )
+            enqueued_page = self.pages[page_num]
+            enqueued_page.set_processing_finished()
+            self.page_tracker.on_page_completed(page_num)
+            if self.next_stage is not None:
+                # Hand the page, and this stage's result, to the next stage of the pipeline.  Later stages don't
+                # need to remember completed pages (only the first stage does, to detect duplicate signals), so drop
+                # it to keep our page dict--and the continue-as-new payload--small.
+                if self.stage_num > 0:
+                    del self.pages[page_num]
+                self.next_stage.accept_page_from_previous_stage(enqueued_page.to_next_stage(future.result()))
+
+        # Initiate processing the page in this stage and register a callback to record that it finished
         def start_page_processor_activity(self, enqueued_page: EnqueuedPage) -> None:
             page = enqueued_page.page
             page_num = enqueued_page.page_num
             already_tried = enqueued_page.is_stuck
             workflow.logger.info(
-                f"Starting page processor for {self.logger.describe_page(page_num, page)}.  Already tried: {already_tried}."
+                f"Starting {self.describe()} for {self.logger.describe_page(page_num, page)}.  Already tried: {already_tried}."
             )
             future = workflow.start_activity(
                 process_page,
                 args=[
-                    self.input.page_processor.name,
+                    self.stage.name,
                     self.input.batch_id,
                     page,
                     page_num,
-                    self.input.page_processor.args,
+                    self.stage.args,
                     enqueued_page.did_signal_next_page,
+                    self.stage_num,
+                    enqueued_page.stage_input,
                 ],
-                start_to_close_timeout=timedelta(seconds=self.input.page_processor.timeout_seconds),
+                start_to_close_timeout=timedelta(seconds=self.stage.timeout_seconds),
                 retry_policy=self._build_retry_policy(self.page_processor, already_tried),
             )
             future.add_done_callback(lambda future: self.on_page_processed(future, page_num, page))
             enqueued_page.set_processing_started(future)
             self.page_tracker.on_page_started(page_num)
-
-        #
-        # Seed the queue with pending entries, then run this.
-        # It will run until all pages are completed, failed, or to-retry.
-        #
-        async def run(self) -> None:
-            while (
-                self.page_tracker.has_pending_pages and not self.page_tracker.should_continue_as_new()
-            ) or self.page_tracker.has_processing_pages:
-                # Wake up (or continue) when an activity signals us with more work, when it completes, or when
-                # we're ready to process a new page.
-                await workflow.wait_condition(
-                    lambda: (self.page_tracker.is_new_page_ready() and not self.page_tracker.should_continue_as_new())
-                    or self.page_tracker.work_is_complete()
-                )
-                if self.page_tracker.is_new_page_ready() and not self.page_tracker.should_continue_as_new():
-                    self.start_page_processor_activity(self.pages[self.page_tracker.get_next_page_num()])
-            if self.page_tracker.has_pending_pages:
-                workflow.continue_as_new(
-                    args=[self.input, ContinueAsNewState(page_tracker_data=self.page_tracker.data, pages=self.pages)]
-                )
+            self.pipeline.on_page_started()
 
         def _build_retry_policy(self, page_processor: PageProcessor, is_extended_retries: bool) -> RetryPolicy:
             if is_extended_retries:
@@ -466,6 +670,5 @@ class BatchOrchestrator:
     def __init__(self, input: BatchOrchestratorInput, state: Optional[ContinueAsNewState]) -> None:
         self.input = input
         self.logger = BatchOrchestrator.LoggerAdapter(input)
-        self.page_queue = BatchOrchestrator.PageQueue(input=input, logger=self.logger, state=state)
+        self.pipeline = BatchOrchestrator.Pipeline(input=input, logger=self.logger, state=state)
         self.start_time = workflow.now()
-        self.page_processor: PageProcessor = get_page_processor(input.page_processor.name)

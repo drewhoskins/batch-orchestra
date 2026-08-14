@@ -30,21 +30,23 @@ class BatchOrchestratorHandle:
     # Finishes the currently executing page processors and then pauses before any more are launched.
     # You can resume with resume() or set_max_parallelism().
     async def pause(self) -> None:
-        await self._handle.signal(BatchOrchestrator.set_max_parallelism, 0)
+        await self.set_max_parallelism(0)
 
     # Starts processing more pages after having called pause(), setting it to your original max_parallelism
     async def resume(self) -> None:
-        await self._handle.signal(BatchOrchestrator.restore_max_parallelism)
+        await self.restore_max_parallelism()
 
     # Use this to pause the batch (by setting it to 0) or otherwise increase/decrease the number of
     # @page_processors that can execute at once.
     # Also "pushes" the old parallelism onto a stack so that you can restore_max_parallelism it later.
-    async def set_max_parallelism(self, max_parallelism: int) -> None:
-        await self._handle.signal(BatchOrchestrator.set_max_parallelism, max_parallelism)
+    # By default this applies to every stage of your pipeline.  Pass stage_num (0 is your page_processor) to throttle
+    # a single stage, e.g. to stop writing while letting the fetch stage stay warm.
+    async def set_max_parallelism(self, max_parallelism: int, stage_num: Optional[int] = None) -> None:
+        await self._handle.signal(BatchOrchestrator.set_max_parallelism, args=[max_parallelism, stage_num])
 
     # "pops" to the previous max_parallelism value, if there was one.
-    async def restore_max_parallelism(self) -> None:
-        await self._handle.signal(BatchOrchestrator.restore_max_parallelism)
+    async def restore_max_parallelism(self, stage_num: Optional[int] = None) -> None:
+        await self._handle.signal(BatchOrchestrator.restore_max_parallelism, args=[stage_num])
 
     # Use the workflow handle to access normal Temporal operations such as cancel and terminate.
     @property

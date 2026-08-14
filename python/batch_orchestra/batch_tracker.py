@@ -5,7 +5,7 @@ from typing import Optional
 
 from temporalio import activity
 
-from .batch_orchestrator_io import BatchOrchestratorProgress
+from .batch_orchestrator_io import BatchOrchestratorProgress, StageProgress
 from .batch_processor import BatchWorkerContext
 
 _batch_tracker_registry = {}
@@ -54,7 +54,11 @@ class BatchTrackerContext(BatchWorkerContext):
         parent_workflow = self._parent_workflow
         assert parent_workflow is not None
         progress_dict = await parent_workflow.query("current_progress")
-        self._progress = BatchOrchestratorProgress(**progress_dict)
+        # The query comes back as plain json, so rebuild the per-stage breakdown.
+        stage_dicts = progress_dict.pop("stages", [])
+        self._progress = BatchOrchestratorProgress(
+            **progress_dict, stages=[StageProgress(**stage_dict) for stage_dict in stage_dicts]
+        )
         return self
 
     @property
