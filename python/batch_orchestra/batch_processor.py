@@ -30,14 +30,6 @@ from .batch_worker import BatchWorkerContext
 #   * It will use the BatchProcessorContext class to access the cursor and any args passed to it.
 #   * It must first call BatchProcessorContext.enqueue_next_page() to enqueue the next page of work before it processes the contents of the page.
 #     this will allow pages to be executed in parallel.
-#
-# Multi-stage pipelines:
-#   * A page processor can also be a stage of a pipeline (see BatchOrchestratorInput.subsequent_stages).  Stages are
-#     declared with the same @page_processor decorator and have the same shape.
-#   * Whatever your page processor returns is passed to the next stage as context.previous_stage_result, so a
-#     fetch stage can hand a list of keys to a write stage, which can hand a summary to an audit stage.
-#     Keep those values small: they are stored in the workflow's history.
-#   * Only the first stage paginates, so only it may call enqueue_next_page().  Every stage gets context.page.
 
 
 class PageProcessor(ABC):
@@ -148,10 +140,6 @@ async def process_page(
     page_num: int,
     args: Optional[str],
     did_signal_next_page: bool,
-    # Which stage of the pipeline this is; 0 (the default) is the paginating page_processor.
-    stage_num: int = 0,
-    # What the previous stage returned for this page.  None for stage 0.
-    stage_input: Optional[Any] = None,
 ) -> Any:
     context = await BatchProcessorContext(
         batch_id=batch_id,
@@ -160,8 +148,6 @@ async def process_page(
         args=args,
         activity_info=activity.info(),
         did_signal_next_page=did_signal_next_page,
-        stage_num=stage_num,
-        stage_input=stage_input,
     ).async_init()
 
     user_provided_page_processor = get_page_processor(page_processor_class_name)
@@ -203,16 +189,12 @@ class BatchProcessorContext(BatchWorkerContext):
         args: Optional[str],
         activity_info: activity.Info,
         did_signal_next_page: bool,
-        stage_num: int = 0,
-        stage_input: Optional[Any] = None,
     ):
         super().__init__(activity_info)
         self._batch_id = batch_id
         self._page = page
         self._page_num = page_num
         self._args = args
-        self._stage_num = stage_num
-        self._stage_input = stage_input
         self._logger = LoggerAdapter(self)
         if did_signal_next_page:
             self._next_page_signaled = BatchProcessorContext.NextPageSignaled.INITIAL_PHASE
@@ -229,26 +211,6 @@ class BatchProcessorContext(BatchWorkerContext):
     @property
     def page(self) -> BatchPage:
         return self._page
-
-    # Which stage of the pipeline you are running in.  0 is the paginating page_processor; the stages in
-    # BatchOrchestratorInput.subsequent_stages follow, in order.
-    @property
-    def stage_num(self) -> int:
-        return self._stage_num
-
-    def is_first_stage(self) -> bool:
-        return self._stage_num == 0
-
-    # Whatever the previous stage of the pipeline returned for this page.
-    # Suggested usage: use JSON and deserialize into a dataclass, just as with args_str.
-    @property
-    def previous_stage_result(self) -> Any:
-        if self.is_first_stage():
-            raise ValueError(
-                "You cannot use previous_stage_result in the first stage of the pipeline (your "
-                + "BatchOrchestratorInput.page_processor) because no stage ran before it.  Use context.page instead."
-            )
-        return self._stage_input
 
     # Gets global, user-provided args passed in BatchOrchestratorInput.page_processor_args.
     # Any values that can differ per page should insted go into your cursor inside BatchPage.
@@ -276,12 +238,7 @@ class BatchProcessorContext(BatchWorkerContext):
         return self._batch_id is not None
 
     # Call this with your next cursor before you process the page to enqueue the next chunk on the BatchOrchestrator.
-    # Only the first stage of a pipeline paginates; later stages process the pages the first stage found.
     async def enqueue_next_page(self, page: BatchPage) -> None:
-        assert self.is_first_stage(), (
-            f"You cannot call enqueue_next_page from stage {self._stage_num} of your pipeline.  Only the first stage "
-            + "(BatchOrchestratorInput.page_processor) paginates."
-        )
         assert self._parent_workflow is not None, (
             "BatchProcessorContext.async_init() was never called.  This class should only be "
             + "instantiated by the batch-orchestra library."

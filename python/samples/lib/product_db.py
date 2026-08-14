@@ -57,15 +57,6 @@ class ProductDB:
         return [Product(*row) for row in result_rows]
 
     @staticmethod
-    def fetch_by_keys(conn: sqlite3.Connection, keys: list[str]):
-        if not keys:
-            return []
-        cursor = conn.cursor()
-        placeholders = ",".join("?" for _ in keys)
-        cursor.execute(f"SELECT * FROM my_products WHERE key IN ({placeholders}) ORDER BY key", keys)
-        return [Product(*row) for row in cursor.fetchall()]
-
-    @staticmethod
     async def inflate_price(conn: sqlite3.Connection, product: Product, factor: float):
         cursor = conn.cursor()
         updated_price = product.price * factor

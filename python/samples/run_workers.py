@@ -15,7 +15,6 @@ try:
     # Import our registry of page processors which are registered with @page_processor.
     # Without importing this, they will not be registered.
     import samples.lib.inflate_product_prices_page_processor  # noqa: F401
-    import samples.lib.product_pipeline_stages  # noqa: F401
     from batch_orchestra.batch_orchestrator import BatchOrchestrator, process_page
     from batch_orchestra.batch_worker import BatchWorkerClient
 except ModuleNotFoundError:
