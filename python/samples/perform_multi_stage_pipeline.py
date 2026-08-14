@@ -97,9 +97,7 @@ Original error: {e}
                         max_parallelism=2,
                         max_queued_pages=10,
                     ),
-                    BatchOrchestratorInput.StageContext(
-                        name=AuditProductPricesStage.__name__, args=args.to_json()
-                    ),
+                    BatchOrchestratorInput.StageContext(name=AuditProductPricesStage.__name__, args=args.to_json()),
                 ],
             ),
             id=f"product_pipeline-{name or str(uuid.uuid4())}",

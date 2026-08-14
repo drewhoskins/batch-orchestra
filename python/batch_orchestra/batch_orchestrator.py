@@ -64,7 +64,7 @@ class BatchOrchestrator:
     ) -> BatchOrchestratorProgress:
         self.start_progress_tracker()
 
-        self.logger.info(f"Starting batch with {len(self.pipeline.stages)} stage(s).")
+        self.logger.info(f"Starting batch.  The pipeline has {len(self.pipeline.stages)} stage(s).")
         if not state:
             first_page = BatchPage(input.page_processor.first_cursor_str, input.page_processor.page_size)
             self.pipeline.first_stage.enqueue_page(first_page, 0)
